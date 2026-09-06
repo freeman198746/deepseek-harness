@@ -5838,6 +5838,19 @@ importers:
         specifier: workspace:^
         version: link:../webserver
 
+  packages/host/lookup:
+    dependencies:
+      '@deepseek-ai/dsh-storage-postgres':
+        specifier: workspace:^
+        version: link:../../storage/storage-postgres
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+
   packages/host/plugin-inventory:
     dependencies:
       zod:

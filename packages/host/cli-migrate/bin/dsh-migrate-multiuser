@@ -1,0 +1,9 @@
+#!/usr/bin/env -S node --import tsx
+/**
+ * `dsh-migrate-multiuser` — operator entry point for the multi-tenant schema.
+ *
+ * This file is the `package.json#bin` target: shebang + delegation to
+ * `index.ts`, which calls {@link runCli}. The `--plan` mode is supported
+ * without PostgreSQL; `--run` requires `PG_CONNECTION_STRING`.
+ */
+await import('../index.ts')

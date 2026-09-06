@@ -1,0 +1,37 @@
+{
+  "name": "@deepseek-ai/dsh-host-cli-migrate",
+  "description": "Operator command `dsh-migrate-multiuser` (#14): apply or plan the @deepseek-ai/dsh-storage-postgres migration set against a live PostgreSQL cluster",
+  "version": "0.1.3-alpha.1",
+  "type": "module",
+  "main": "index.ts",
+  "bin": {
+    "dsh-migrate-multiuser": "bin/dsh-migrate-multiuser"
+  },
+  "exports": {
+    ".": "./index.ts",
+    "./src/*": "./src/*"
+  },
+  "files": [
+    "src",
+    "bin",
+    "index.ts",
+    "README.md",
+    "README.zh.md",
+    "README.i18n.yaml",
+    "package.json",
+    "tsconfig.json"
+  ],
+  "scripts": {
+    "test:contract": "vitest run --config vitest.config.ts",
+    "test:smoke": "tsx .workbuddy/smoke.ts"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:^"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-storage-postgres": "workspace:^"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:^"
+  }
+}

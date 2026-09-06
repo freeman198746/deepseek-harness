@@ -5761,6 +5761,16 @@ importers:
         specifier: workspace:^
         version: link:../../../vendor/cordis
 
+  packages/host/cli-migrate:
+    dependencies:
+      '@deepseek-ai/dsh-storage-postgres':
+        specifier: workspace:^
+        version: link:../../storage/storage-postgres
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+
   packages/host/directory-picker:
     devDependencies:
       '@deepseek-ai/cordis':

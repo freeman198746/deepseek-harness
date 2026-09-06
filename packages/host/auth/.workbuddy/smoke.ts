@@ -26,7 +26,7 @@
  * Returns exit code 0 on success, 1 on failure.
  */
 
-import { exportJWK, generateKeyPair, type CryptoKey } from 'jose'
+import { exportJWK, generateKeyPair, SignJWT, type CryptoKey } from 'jose'
 import { Context } from '@deepseek-ai/cordis'
 import {
   apply as hostAuthApply,
@@ -460,6 +460,162 @@ async function main(): Promise<void> {
     await ctx.auth.close()
   })
 
+  // -------------------------------------------------------------------------
+  // T1 — Negative cases N1..N10 (DSH multi-tenant plan §15 token verification)
+  //
+  // The ten tests pin down every rejection path a real attacker would probe.
+  // They are deliberately separate from the happy-path suite above so a
+  // regression on any one path is easy to spot in the smoke report.
+  // -------------------------------------------------------------------------
+
+  // N1: signature tamper.
+  await safe('N1 signature tamper → signature-invalid', async () => {
+    const kp = await generateCryptoKeyPair()
+    const s = new AuthService(baseOptions(kp))
+    const m = await s.mint({ subject: 'a' })
+    const [h, p, sig] = m.token.split('.')
+    if (!h || !p || !sig) throw new Error('N1: token shape broken')
+    const tampered = `${h}.${p}.${sig.slice(0, -1)}${sig.slice(-1) === 'A' ? 'B' : 'A'}`
+    try {
+      await s.verify(tampered, { expectedAudience: 'dsh-server' })
+      throw new Error('N1: expected throw')
+    } catch (err) {
+      if (!isAuthError(err)) throw err
+      if (err.code !== 'signature-invalid' && err.code !== 'malformed-jwt') {
+        throw new Error(`N1: unexpected code: ${err.code}`)
+      }
+    }
+    await s.close()
+  })
+
+  // N2: expired (TTL 1s + sleep + skew 0).
+  await safe('N2 expired → expired', async () => {
+    const kp = await generateCryptoKeyPair()
+    const fast = new AuthService(baseOptions(kp, { tokenTtlSeconds: 1, clockSkewSeconds: 0 }))
+    const m = await fast.mint({ subject: 'a' })
+    await new Promise((r) => setTimeout(r, 1500))
+    await expectAuthError(fast.verify(m.token, { expectedAudience: 'dsh-server' }), 'expired', 'N2 expired')
+    await fast.close()
+  })
+
+  // N3: wrong issuer.
+  await safe('N3 wrong issuer → issuer-mismatch', async () => {
+    const kp = await generateCryptoKeyPair()
+    const signer = new AuthService(baseOptions(kp, { issuer: 'attacker' }))
+    const verifier = new AuthService(baseOptions(kp))
+    const m = await signer.mint({ subject: 'a' })
+    await expectAuthError(
+      verifier.verify(m.token, { expectedAudience: 'dsh-server' }),
+      'issuer-mismatch',
+      'N3 wrong issuer',
+    )
+    await signer.close()
+    await verifier.close()
+  })
+
+  // N4: wrong audience.
+  await safe('N4 wrong audience → audience-mismatch', async () => {
+    const kp = await generateCryptoKeyPair()
+    const s = new AuthService(baseOptions(kp))
+    const m = await s.mint({ subject: 'a' })
+    await expectAuthError(
+      s.verify(m.token, { expectedAudience: 'wrong-aud' }),
+      'audience-mismatch',
+      'N4 wrong audience',
+    )
+    await s.close()
+  })
+
+  // N5: missing scope.
+  await safe('N5 missing required scope → scope-missing', async () => {
+    const kp = await generateCryptoKeyPair()
+    const s = new AuthService(baseOptions(kp))
+    const m = await s.mint({ subject: 'a', scopes: ['lookup:read'] })
+    await expectAuthError(
+      s.verify(m.token, { expectedAudience: 'dsh-server', requiredScopes: ['ensure:write'] }),
+      'scope-missing',
+      'N5 missing scope',
+    )
+    await s.close()
+  })
+
+  // N6: wrong alg — HS256 token verified against EdDSA key.
+  await safe('N6 wrong alg (HS256 vs EdDSA) → signature-invalid', async () => {
+    const kp = await generateCryptoKeyPair()
+    const s = new AuthService(baseOptions(kp))
+    const hsKey = new TextEncoder().encode('attacker-controlled-secret')
+    const hsToken = await new SignJWT({ iss: 'dsh', aud: 'dsh-server', sub: 'a' })
+      .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .setJti('jti-fake')
+      .sign(hsKey)
+    try {
+      await s.verify(hsToken, { expectedAudience: 'dsh-server' })
+      throw new Error('N6: expected throw')
+    } catch (err) {
+      if (!isAuthError(err)) throw err
+      if (err.code !== 'signature-invalid' && err.code !== 'malformed-jwt') {
+        throw new Error(`N6: unexpected code: ${err.code}`)
+      }
+    }
+    await s.close()
+  })
+
+  // N7: bad token shape (1/2/4 segments).
+  await safe('N7 bad token shape → malformed-jwt', async () => {
+    const kp = await generateCryptoKeyPair()
+    const s = new AuthService(baseOptions(kp))
+    for (const shape of ['', 'a', 'a.b', 'a.b.c.d']) {
+      try {
+        await s.verify(shape, { expectedAudience: 'dsh-server' })
+        throw new Error(`N7: expected throw for shape: ${shape}`)
+      } catch (err) {
+        if (!isAuthError(err) || err.code !== 'malformed-jwt') {
+          throw new Error(`N7: unexpected code for "${shape}": ${String(err)}`)
+        }
+      }
+    }
+    await s.close()
+  })
+
+  // N8: replay jti — document current behavior (no replay protection at this layer).
+  await safe('N8 replay jti → second verify succeeds (replay protection is caller-side)', async () => {
+    const kp = await generateCryptoKeyPair()
+    const s = new AuthService(baseOptions(kp))
+    const m = await s.mint({ subject: 'a' })
+    const first = await s.verify(m.token, { expectedAudience: 'dsh-server' })
+    const second = await s.verify(m.token, { expectedAudience: 'dsh-server' })
+    if (first.jti !== second.jti) throw new Error('N8: jti unexpectedly changed')
+    if (first.sub !== second.sub) throw new Error('N8: sub unexpectedly changed')
+    await s.close()
+  })
+
+  // N9: clock skew tolerance — token just-expired within skew window.
+  await safe('N9 clock skew tolerance (within window) → accepted', async () => {
+    const kp = await generateCryptoKeyPair()
+    const s = new AuthService(baseOptions(kp, { tokenTtlSeconds: 60, clockSkewSeconds: 60 }))
+    const m = await s.mint({ subject: 'a', ttlSeconds: 60 })
+    // mockNow 90 seconds in the future — token expired 30s ago, well inside the 60s skew.
+    const future = new Date(Date.now() + 90 * 1000)
+    const claims = await s.verify(m.token, { expectedAudience: 'dsh-server', mockNow: future })
+    if (claims.sub !== 'a') throw new Error(`N9: sub mismatch: ${claims.sub}`)
+    await s.close()
+  })
+
+  // N10: default audience 错 (mint with audience override, verify expects default).
+  await safe('N10 default audience 错 (mint override) → audience-mismatch', async () => {
+    const kp = await generateCryptoKeyPair()
+    const s = new AuthService(baseOptions(kp))
+    const m = await s.mint({ subject: 'a', audience: 'evil-aud' })
+    await expectAuthError(
+      s.verify(m.token, { expectedAudience: 'dsh-server' }),
+      'audience-mismatch',
+      'N10 default audience',
+    )
+    await s.close()
+  })
+
   process.stdout.write('\n')
   process.stdout.write(`Result: ${counters.pass} passed, ${counters.fail} failed\n`)
   process.stdout.write(counters.fail === 0 ? 'ALL CHECKS PASSED\n' : 'SOME CHECKS FAILED\n')
@@ -467,6 +623,4 @@ async function main(): Promise<void> {
   if (counters.fail > 0) process.exit(1)
 }
 
-const _main = main
-void _main
 void main()

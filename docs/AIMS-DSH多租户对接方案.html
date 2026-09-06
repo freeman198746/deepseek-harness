@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AIMS-DSH 多租户对接方案：身份对接 · 工作空间编排 · 患者级与就诊级场景</title>
+<style>
+  :root {
+    --bg: #f7f8fa; --card: #ffffff; --text: #1f2329; --muted: #5f6b7a;
+    --border: #e5e8ec; --accent: #4d6bfe; --accent-soft: #eef1ff;
+    --warn-bg: #fff8e6; --warn-border: #f0d48a; --warn-text: #8a6d1a;
+    --code-bg: #f6f8fa; --code-border: #e1e4e8; --code-text: #24292f;
+    --ok: #1d9e75; --ok-bg: #e1f5ee; --danger: #d85a30; --danger-bg: #fcebe7;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; line-height: 1.75; font-size: 15px; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 40px 24px 80px; }
+  header { padding: 28px 32px; background: var(--card); border: 1px solid var(--border); border-radius: 16px; margin-bottom: 24px; }
+  header h1 { margin: 0 0 8px; font-size: 24px; font-weight: 700; }
+  header .sub { color: var(--muted); font-size: 14px; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; margin-right: 8px; background: var(--accent-soft); color: var(--accent); }
+  section { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 24px 32px; margin-bottom: 20px; }
+  h2 { font-size: 19px; margin: 0 0 16px; padding-left: 12px; border-left: 4px solid var(--accent); }
+  h3 { font-size: 16px; margin: 20px 0 10px; }
+  p { margin: 10px 0; }
+  code.inline { background: var(--code-bg); border: 1px solid var(--code-border); border-radius: 4px; padding: 1px 6px; font-family: "JetBrains Mono", Consolas, "Courier New", monospace; font-size: 13px; color: var(--code-text); }
+  pre { background: var(--code-bg); border: 1px solid var(--code-border); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font-family: "JetBrains Mono", Consolas, "Courier New", monospace; font-size: 13px; line-height: 1.6; color: var(--code-text); }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+  th, td { border: 1px solid var(--border); padding: 9px 12px; text-align: left; vertical-align: top; }
+  th { background: var(--code-bg); font-weight: 600; }
+  .tip, .warn, .ok, .danger { border-radius: 10px; padding: 12px 16px; margin: 14px 0; font-size: 14px; }
+  .tip { background: var(--accent-soft); border: 1px solid #d6dcff; }
+  .warn { background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text); }
+  .ok { background: var(--ok-bg); border: 1px solid #bce8d8; }
+  .danger { background: var(--danger-bg); border: 1px solid #f5c4b3; }
+  ol, ul { padding-left: 22px; margin: 10px 0; }
+  li { margin: 6px 0; }
+  .fig { margin: 16px 0; border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: #fafbfc; }
+  footer { text-align: center; color: var(--muted); font-size: 13px; margin-top: 24px; }
+
+  /* ===== 左侧目录树 ===== */
+  .toc {
+    position: fixed; top: 0; left: 0; bottom: 0; width: 300px;
+    background: var(--card); border-right: 1px solid var(--border);
+    overflow-y: auto; padding: 18px 0 30px; z-index: 100;
+    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+  }
+  .toc::-webkit-scrollbar { width: 5px; }
+  .toc::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .toc-title {
+    font-size: 13px; font-weight: 700; color: var(--muted);
+    letter-spacing: 1px; padding: 2px 18px 10px; border-bottom: 1px solid var(--border); margin-bottom: 8px;
+  }
+  .toc a {
+    display: block; text-decoration: none; color: var(--muted);
+    font-size: 13px; line-height: 1.45; padding: 4px 14px 4px 18px;
+    border-left: 3px solid transparent;
+    transition: background .15s, color .15s;
+  }
+  .toc a.lvl1 { font-weight: 600; color: var(--text); margin-top: 5px; }
+  .toc a.lvl2 { padding-left: 40px; font-size: 12.5px; color: var(--muted); }
+  .toc a:hover { background: var(--accent-soft); color: var(--accent); }
+  .toc a.active {
+    background: var(--accent-soft); color: var(--accent);
+    border-left-color: var(--accent); font-weight: 600;
+  }
+  body { padding-left: 300px; }
+  @media (max-width: 1240px) {
+    .toc { display: none; }
+    body { padding-left: 0; }
+  }
+  html { scroll-behavior: smooth; }
+  section, header { scroll-margin-top: 16px; }
+</style>
+</head>
+<body>
+<nav class="toc" id="toc"><div class="toc-title">目 录</div></nav>
+<div class="wrap">
+
+<header>
+  <h1>AIMS-DSH 多租户对接方案</h1>
+  <div class="sub">
+    <span class="badge">AIMS 侧规划</span>
+    <span class="badge">身份与授权对接</span>
+    <span class="badge">工作空间生命周期编排</span>
+    <span class="badge">患者级工作空间</span>
+    <span class="badge">就诊级会话</span>
+    <span class="badge">等保合规</span>
+    <br><br>
+    AIMS 医生站如何作为<b>第一个多租户宿主（Host）</b>接入 DSH 多用户改造（dsh-multiuser）。本文档是《DeepSeek-Harness-多用户租户改造方案.html》（DSH 侧，编写中）的镜像篇与唯一对接配套：<b>DSH 侧定"租户引擎怎么造"，本方案定"AIMS 这个宿主怎么接"</b>，两侧方案一一对应、互为镜像。既有"患者维度会话隔离"诉求已并入本方案统一设计（见 11.2）。<br>
+    <b>核心场景（龙哥 2026-09-06 提出）：</b>① 用户（医生）自动创建主工作空间；② 按患者自动创建患者级工作空间；③ 单次就诊自动创建会话。本文为<b>评审迭代稿 v0.4</b>：6 个决策点已全部拍板——① C 模型（首诊 owner 私有 + 主动共享）、② b 立即建会话、③ a 只归档不删、④ a 医院=租户、⑤ a mock 桩先行、⑥ a 三前缀命名空间（见 12.2）。
+  </div>
+</header>
+
+<section>
+  <h2>〇、结论先行</h2>
+  <p><b>可行，且 AIMS 侧改动收敛在"一个服务端模块 + 协议 v2 扩展"</b>。<b>关键设计转向（v2026-09-06 增）：</b>AIMS 侧<b>不再建立三张映射表</b>，所有 AIMS↔DSH 实体对应关系由 DSH 侧 <code class="inline">biz_key</code> 反查族承担（DSH 方案 #17 host/lookup），AIMS 只在内存中缓存当前会话需要的 (workspaceId, sessionId, dshUserId) 三元组，零持久化映射。对接的本质是一次职责切分：</p>
+  <table>
+    <tr><th>维度</th><th>结论</th></tr>
+    <tr><td><b>AIMS 的角色</b></td><td>身份源（IdP）+ 生命周期编排器（provisioning）+ 业务上下文推送方。<b>不承载</b> DSH 的租户数据（会话/技能/资产/记忆全在 DSH）。</td></tr>
+    <tr><td><b>身份对接</b></td><td>走 DSH 多租户方案第六节已规划的「宿主嵌入」渠道：AIMS 服务端持机器渠道 API Key，为登录医生换发<b>短期用户 JWT（uid/tid 声明）</b>，iframe 面板凭 JWT 打 apiproxy。既有固定 token 面板链路降级为运维兼容模式（演进表见 2.4）。</td></tr>
+    <tr><td><b>三个自动创建</b></td><td>全部走 <b>AIMS 服务端 → DSH 机器渠道 provisioning API</b>（ensure 语义 + 业务键幂等），<b>不走</b> postMessage（绕过服务端审计）。postMessage 协议 v2 只负责视图切换与上下文注入。</td></tr>
+    <tr><td><b>患者工作空间</b></td><td><b>首诊医生 owner 私有（v0.3 拍板）</b>：首诊医生 = owner，默认仅 owner 可见可写；owner 可主动邀请其他医生加 member（成员授予 API）。急诊医生/转科会诊走"申请-准入"流（owner 审批后加 member）。本阶段不做 workspace 转让（预留 API 不实现）；不做一次性授权链接、按角色模板、跨院区 share（DSH Phase 2 再议）。对齐 DSH <code class="inline">workspace + workspace_member</code>。</td></tr>
+    <tr><td><b>AIMS 侧数据</b></td><td><b>零映射表（v2026-09-06 设计转向）</b>。所有 AIMS 业务键 → DSH 内部 id 的对应关系走 DSH 侧 <code class="inline">(tenant_id, biz_key)</code> UNIQUE 索引 + <code class="inline">GET /mu/v1/lookup</code> 反查族（DSH 方案 #17）。AIMS 仅在请求作用域内存中缓存 (workspaceId, sessionId, dshUserId) 三元组；进程重启即丢，下次请求重查。患者正文、上下文快照、产物全部落 DSH 用户桶 + DSH 元数据库，<b>AIMS 侧唯一真相源 = AIMS 业务表本身</b>（userCode/cureno/visitId）。</td></tr>
+    <tr><td><b>前置依赖</b></td><td>DSH 多租户改造第一阶段（apiproxy 强制认证 + biz_key 列 + UNIQUE 索引 + ensure/lookup API）必须先行；本方案第九节的 API 契约清单需回灌进 DSH 方案，作为其「宿主嵌入渠道」的具体化。</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>一、对接定位与职责边界</h2>
+  <h3>1.1 总原则</h3>
+  <ol>
+    <li><b>单一职责切分</b>：AIMS 管"谁在用、为了哪个患者哪次就诊用"，DSH 管"会话、技能、资产、记忆怎么存怎么隔"。</li>
+    <li><b>幂等优先</b>：所有 provisioning 都是 <code class="inline">ensure</code> 语义（存在即复用，不存在即创建），幂等键 = AIMS 侧业务键（usercode / cureno / visitId），重复触发零副作用——医生反复开关 uAI tab、多端并发进入同一患者，都不能产生重复工作空间。</li>
+    <li><b>控制面与数据面分层</b>：创建/授权等写操作走服务端 API（机器渠道，带审计）；iframe 内的 postMessage 只做视图切换（切工作空间、切会话）和上下文注入（患者快照）。</li>
+    <li><b>隐私最小化</b>：进 DSH 的患者信息只取"AI 辅助诊疗所需最小集"，且明确标注脱敏与禁入域（见第十节）。</li>
+    <li><b>降级可用</b>：DSH 不可达时 uAI tab 显示可重试的占位面板，不影响 AIMS 主流程（患者诊疗操作零耦合）。</li>
+  </ol>
+  <h3>1.2 职责矩阵</h3>
+  <table>
+    <tr><th>能力</th><th>AIMS（宿主）</th><th>DSH（租户引擎）</th></tr>
+    <tr><td>医生身份认证</td><td><b>源</b>：医院 4A / 域账号登录，产出 usercode + 科室</td><td>消费方：验 JWT / 查 mu_user</td></tr>
+    <tr><td>租户与用户记录</td><td>触发 ensure（首登/首开 uAI）</td><td><b>承载</b>：mu_tenant / mu_user，RLS 兜底</td></tr>
+    <tr><td>工作空间生命周期</td><td><b>编排</b>：按业务事件触发 ensure / 归档</td><td><b>承载</b>：mu_workspace + 成员表 + 用户桶目录</td></tr>
+    <tr><td>会话创建与归属</td><td>提供业务键（visitId）与命名建议</td><td><b>承载</b>：mu_session，lineage 血缘</td></tr>
+    <tr><td>患者临床数据</td><td><b>源</b>：HIS/EMR 视图，负责快照组装 + 脱敏</td><td>只收快照（会话上下文），不回写</td></tr>
+    <tr><td>AI 会话/技能/资产/记忆</td><td>不感知内容</td><td><b>承载</b>：用户桶 + mu_* 元数据</td></tr>
+    <tr><td>业务 ↔ DSH 实体定位</td><td><b>不存</b>：AIMS 业务键（userCode / cureno / visitId）→ DSH 内部 id 完全交给 DSH 侧 <code class="inline">biz_key</code> 反查族（<code class="inline">UNIQUE (tenant_id, biz_key)</code> 索引 + <code class="inline">GET /mu/v1/lookup</code>）</td><td><b>承载</b>：<code class="inline">app_user</code> / <code class="inline">workspace</code> / <code class="inline">session_meta</code> 三表的 <code class="inline">biz_key</code> 列 + UNIQUE 索引 + lookup API（DSH 方案 #17/#18）</td></tr>
+    <tr><td>业务状态机 ↔ DSH 状态字段</td><td>翻译：将 AIMS 业务事件（出院/归档/调岗）翻译为 DSH 状态（<code class="inline">workspace.status</code> active/archived、<code class="inline">privacy</code> shared/private、<code class="inline">session_meta.status</code> active/closed）</td><td><b>承载</b>：<code class="inline">workspace.status</code> / <code class="inline">privacy</code> / <code class="inline">session_meta.status</code> 三字段 + CHECK 约束</td></tr>
+    <tr><td>审计</td><td>业务侧审计（谁在何时对哪个患者开了 AI）</td><td>mu_audit 四元组 (tenantId, userId, sessionId, traceId)</td></tr>
+  </table>
+  <div class="tip"><b>为什么 AIMS 侧不放映射表（v2026-09-06 设计转向）？</b>① 单一真相源原则：DSH 是租户引擎，<code class="inline">biz_key</code> 反查是其内禀能力（<code class="inline">UNIQUE (tenant_id, biz_key)</code> 索引就是干这个的），AIMS 再造一份是冗余且需对账；② 状态一致性：AIMS 侧映射若存在，状态变更要双向同步（出院要同时改 AIMS 映射 status + 调 DSH archive），零映射则只需调 DSH 一处；③ 跨域优雅：AIMS 业务表本身就是 userCode/cureno/visitId 的 source of truth，根本不需要"另一份"来查"是不是已建过 DSH 实体"——直接 <code class="inline">lookup</code> DSH 即可。代价：AIMS 每次面板渲染都要先打一次 lookup（DSH 索引 <code class="inline">UNIQUE</code> 是 O(1) 命中，毫秒级，可接受）。</div>
+</section>
+
+<section>
+  <h2>二、身份与授权对接</h2>
+  <h3>2.1 渠道定位（对齐 DSH 方案第六节矩阵）</h3>
+  <p>DSH 多租户方案的「接入渠道 × 授权方式矩阵」已为本场景预留了行：<b>宿主嵌入（uai-widget / AIMS）→ 宿主服务端换发的短期用户 Token（JWT，带 uid/tid 声明）→ 面板 iframe 请求携带 Token 打 apiproxy</b>。本方案就是把这一行落地。</p>
+  <h3>2.2 换发链路（端到端）</h3>
+  <pre>
+医生登录 AIMS（医院 4A / 域账号）
+   │  AIMS 会话建立（usercode、姓名、科室 → tenantKey 映射；科室仅作人员识别，不作权限边界——v0.3 决策点 ①）
+   ▼
+医生打开 uAI tab（或全局壳首次唤起）
+   │  ① 前端调 AIMS 服务端  GET /api/dsh/panel-context?cureno=..&visitId=..
+   ▼
+AIMS 服务端 DshProvisioningService（机器渠道，持 API Key）
+   │  ② ensure 链（幂等，见第三节）：tenant → user → 患者工作空间 → 就诊会话
+   │  ③ 调 DSH  POST /mu/v1/auth/token:issue  为该医生换发短期 JWT（30~120min）
+   │  ④ 组装返回：{ panelUrl, dshUserId, workspaceId, sessionId, tokenExp }
+   ▼
+前端 patient-uai-tab 挂 iframe
+   │  panelUrl = UaiPanelUrl 模板 + ?token=&lt;JWT&gt;（替换现有 {1}{2} 占位符方案）
+   ▼
+DSH apiproxy 强制认证中间件
+   │  ⑤ 解析 JWT → userId/tenantId → ctx.isolate() → 会话/技能/存储按用户实例化
+   ▼
+dsh-aims-bridge 插件（iframe 内）
+   │  ⑥ aims-ready 上行 → AIMS 下发 aims-open-ctx { workspaceId, sessionId, 患者快照 }
+   ▼
+DSH 面板切到目标工作空间/会话，注入患者上下文（at-file / 系统提示前缀）
+  </pre>
+  <h3>2.3 Token 三层体系</h3>
+  <table>
+    <tr><th>凭证</th><th>形态</th><th>生命周期</th><th>持有方 / 用途</th></tr>
+    <tr><td><b>机器渠道 API Key</b></td><td>长随机串，作用域 = 租户 + provisioning/token:issue 权限 + 路径白名单（对齐 DSH 方案 <code class="inline">mu_user.auth_type='apikey'</code>）</td><td>长期，可轮换</td><td>仅 AIMS 服务端（配置中心/密钥库），绝不进前端</td></tr>
+    <tr><td><b>用户 JWT</b></td><td>短期 JWT，claims = uid / tid / scope=web-panel</td><td>30~120 分钟</td><td>iframe URL 一次性携带 → DSH 换 HttpOnly cookie（30 天，按用户）</td></tr>
+    <tr><td><b>DSH 面板 cookie</b></td><td>HttpOnly; SameSite=Strict</td><td>30 天</td><td>DSH 侧会话态；JWT 过期后靠 cookie 续期，bridge 检测 401 才请求 AIMS 重换</td></tr>
+  </table>
+  <div class="warn"><b>过期与续期</b>：JWT 过期 ≠ 面板掉线（cookie 还在）。仅在 cookie 失效（DSH 重启 / 30 天 / 换医生登录）时，bridge 上行 <code class="inline">aims-auth-expired</code>，AIMS 前端重新走 2.2 链路。医生站切换登录账号时 AIMS 前端<b>必须销毁并重建 iframe</b>（防上一位医生的 cookie 残留），patient-uai-tab 的"切走即销毁 iframe"现状恰好是正确行为。</div>
+  <h3>2.4 与既有固定 token 面板链路的演进关系</h3>
+  <table>
+    <tr><th>阶段</th><th>形态</th><th>说明</th></tr>
+    <tr><td>现状（已落地）</td><td><code class="inline">UaiPanelUrl?token=固定值&usercode={1}&cureno={2}</code></td><td>单机/单人验证期方案；usercode/cureno 走 URL 明文，DSH 侧无身份语义</td></tr>
+    <tr><td><b>过渡期（本方案阶段 1）</b></td><td>固定 token 保留为<b>运维直开通道</b>（管理员排障用），业务流量切 token:issue</td><td>URL 模板改为 <code class="inline">{token}</code> 占位符由服务端填充；cureno 从 URL 移除、改 postMessage 下发（2026-09-05 已预留 TODO）</td></tr>
+    <tr><td>多租户稳态</td><td>固定 token 仅绑"运维虚拟用户"（uid=ops），权限只读</td><td>生产可选关闭</td></tr>
+  </table>
+  <h3>2.5 租户键设计（AIMS 组织架构 → mu_tenant）</h3>
+  <p>租户粒度决策：<b>医院（单院区部署）为租户</b>，科室仅作人员识别（v0.3 决策点 ① 修订：不作共享边界）。理由：DSH 的 tenant 承载全局技能/记忆库/配额/加密密钥——以医院为粒度利于统一技能库；科室协作通过 owner 主动成员授予实现（决策点 ① 拍板方案 C），不需要科室级租户。多院区集团化部署时再引入院区维度（tenantKey 加院区前缀即可）。</p>
+  <pre>
+tenantKey 命名：hospital.&lt;院区代码&gt;      如 hospital.dezhen
+userKey   命名：aims.&lt;usercode&gt;           如 aims.D2024001
+bizKey    命名：patient.&lt;cureno&gt; / visit.&lt;visitId&gt;   （幂等键，第三节）
+  </pre>
+</section>
+
+<section>
+  <h2>三、三个"自动创建"：生命周期编排</h2>
+  <h3>3.1 总览：一条 ensure 链</h3>
+  <pre>
+ensureTenant(tenantKey)                          ← 首次部署/新院区，一次
+   └─ ensureUser(tenantKey, userKey)             ← 医生首次登录 AIMS / 首开 uAI（幂等）
+        └─ ensureUserMainWorkspace(userKey)      ← 用户主工作空间（幂等，默认私有）
+ensurePatientWorkspace(tenantKey, cureno)        ← 首次对该患者使用 AI（幂等，owner 私有）
+   └─ ensureVisitSession(cureno, visitId)        ← 每次就诊会话（幂等，挂在患者工作空间）
+   └─ grantWorkspaceMember(ws, 首诊医生, owner)   ← 首诊医生自动成 owner
+  </pre>
+  <div class="tip">整条链在任何一步已存在时直接短路返回已有实体——<b>ensure 是"读多写少"</b>：稳态下 90% 调用只命中 DSH 侧 <code class="inline">UNIQUE (tenant_id, biz_key)</code> 索引（毫秒级，不产生 DSH 写流量）。</div>
+  <h3>3.2 用户主工作空间（医生维度的"大本营"）</h3>
+  <table>
+    <tr><th>项</th><th>设计</th></tr>
+    <tr><td>触发时机</td><td>医生<b>首次打开 uAI tab 或全局壳</b>（懒开通，不在登录时批量做——避免 DSH 不可用时阻断登录）；也可由管理员后台预开通</td></tr>
+    <tr><td>ensure 内容</td><td><code class="inline">tenant</code>（一次）+ <code class="inline">app_user</code> + 主工作空间（display_name = "工作台 · {姓名}"，privacy=private）</td></tr>
+    <tr><td>用途定位</td><td>与患者无关的个人会话（科研问答、通用咨询、个人技能试跑）；患者相关会话<b>不落</b>主工作空间（隐私边界清晰）</td></tr>
+    <tr><td>幂等键</td><td><code class="inline">userKey</code>（UNIQUE(tenant_id, username) 由 DSH 侧保证）</td></tr>
+    <tr><td>失败降级</td><td>ensure 失败 → uAI tab 显示"智能体服务初始化失败 [重试]"占位（不做静默降级，避免医生误以为无此功能）</td></tr>
+  </table>
+  <h3>3.3 患者级工作空间（cureno 维度）</h3>
+  <table>
+    <tr><th>项</th><th>设计</th></tr>
+    <tr><td>触发时机</td><td><b>医生选中患者后打开 uAI tab</b>（即现有 patient-uai-tab 的使用路径，零新增操作）；危急值推送场景由 notification-hub 主动触发（场景 S6）</td></tr>
+    <tr><td>ensure 内容</td><td><code class="inline">workspace</code>（privacy=private，display_name = "{床号}·{姓名}·{cureno 后4位}"，bizKey=<code class="inline">patient.{cureno}</code>，v0.3 决策点 ① 拍板 owner 私有）+ 触发医生授予 owner（成员策略见第四节）</td></tr>
+    <tr><td>患者上下文</td><td>创建成功后 AIMS 组装<b>患者快照</b>（诊断、过敏史、当前医嘱、检验危急值等最小集，第十节）→ 经 at-file / 系统提示前缀注入会话，<b>快照本体存 DSH 会话上下文，不进 mu_memory</b></td></tr>
+    <tr><td>幂等键</td><td><code class="inline">patient.{cureno}</code> + tenantKey</td></tr>
+    <tr><td>复诊衔接</td><td>同一 cureno 再次住院（同院区）复用同一工作空间——就诊历史按会话沉淀在同一空间内，跨就诊连续性天然成立</td></tr>
+    <tr><td>出院处理</td><td>状态机：active → archived（出院触发或 T+1 批任务）；archived 后工作空间只读，新就诊会话需重新激活（决策点 ③）</td></tr>
+  </table>
+  <h3>3.4 就诊级会话（visit 维度）</h3>
+  <table>
+    <tr><th>项</th><th>设计</th></tr>
+    <tr><td>触发时机</td><td><b>立即创建（v0.4 决策点 ② 拍板 b）</b>：医生<u>选中患者 + 进入 uAI tab 的同一原子事务</u>里同步 ensure 就诊会话，与患者工作空间 ensure 同链；备选 a 懒创建（首轮对话才建）已排除——理由：① 时序与工作空间保持一致可减少一次往返；② 状态机起点明确，避免空会话判断；④ v0.4 评审会上"立即建 + 后续未发消息由 DSH GC 回收"的方案胜出（回收策略见 DSH §十四测试章节）</td></tr>
+    <tr><td>ensure 内容</td><td><code class="inline">mu_session</code>（挂患者工作空间，title = "{就诊类型}·{yyyy-MM-dd}"，bizKey=<code class="inline">visit.{visitId}</code>）</td></tr>
+    <tr><td>多次对话</td><td>同一 visit 默认延续同一会话（resume 语义，DSH 原生能力）；医生可手动"新开会话"（同 visit 下多会话并列，lineage 记录）</td></tr>
+    <tr><td>跨就诊回顾</td><td>uAI tab 内展示该患者工作空间的会话列表（历史会话模块，DSH 十三章），点击切换 / fork 续聊</td></tr>
+    <tr><td>幂等键</td><td><code class="inline">visit.{visitId}</code>；visitId 用 AIMS 就诊流水（挂号/入院事件产生），保证同一次就诊全局唯一</td></tr>
+  </table>
+  <h3>3.5 生命周期状态机（AIMS 侧视角）</h3>
+  <pre>
+[用户]      未开通 ──ensure──▶ active ──────────▶ disabled（离职/停用，成员表移除，数据保留）
+[患者空间]  未开通 ──ensure──▶ active ──出院──▶ archived ──再住院──▶ active（复用，会话追加）
+[就诊会话]  未创建 ──ensure──▶ active ──就诊结束（出院结算）──▶ closed（只读，可 fork）
+[状态机]    AIMS 仅翻译为 DSH 状态字段（workspace.status/privacy、session_meta.status）；archived/closed 只调 DSH 归档/关闭 API
+  </pre>
+  <div class="warn"><b>归档 ≠ 删除</b>：医疗数据保存年限（病历级 ≥15 年，等保/电子病历评级要求）下，<b>v0.4 决策点 ③ 拍板 a：只归档不删</b>。DSH 侧 <code class="inline">workspace.status = 'archived'</code> / <code class="inline">session_meta.status = 'closed'</code>，数据原地保留；后续如需匿名化/物理删除走独立法务评审（不在本方案范围）。</div>
+</section>
+
+<section>
+  <h2>四、患者工作空间归属设计（决策点 ①）</h2>
+  <table>
+    <tr><th>维度</th><th>方案 A：医生私有（每医生 × 每患者一空间）</th><th>方案 B：租户共享（每患者一空间，科室成员可见）</th><th><b>方案 C：首诊 owner 私有 + 主动共享（v0.3 拍板）</b></th></tr>
+    <tr><td>空间数量</td><td>科内 20 医生 × 在管 200 患者 = 4000 空间/月，膨胀快</td><td>200 空间/月，与患者数同阶</td><td>200 空间/月（每患者一空间，owner 私有）</td></tr>
+    <tr><td>团队协作</td><td>✘ 主任看住院医的 AI 分析要靠 share/fork，操作链长</td><td>✔ 接诊医生 writer、科室成员 reader，天然对齐 <code class="inline">workspace_member</code>，查房/交班/多学科直接续看</td><td>◐ owner 主动加 member；协作需 owner 邀请（急诊医生走申请-准入），但权限边界清晰</td></tr>
+    <tr><td>跨就诊连续性</td><td>同一患者不同医生各开各的，上下文割裂</td><td>同一患者全部就诊会话沉淀一处</td><td>同一患者全部就诊会话沉淀一处（owner 邀请的成员共享上下文）</td></tr>
+    <tr><td>隐私面</td><td>较小（只有经治医生可见）</td><td>较大（科室可见）→ 必须 RLS + 审计 + reader 仅本租户成员</td><td>最小（默认仅 owner；成员由 owner 显式邀请，全程审计可追溯）</td></tr>
+    <tr><td>权限控制粒度</td><td>天然按人隔离</td><td>可细化：writer 仅主治/接诊登记医生，reader 科室默认；敏感患者（VIP/传染病）可标记 private 单独走方案 A</td><td>由 owner 完全决定；隐私患者天然满足（无需降级开关）；跨医生访问必须 owner 显式行为</td></tr>
+    <tr><td>转科/换主治流程</td><td>新医生建新空间（旧数据不可见）</td><td>零成本（自动可见）</td><td>原 owner 邀请新医生；或原 owner 撤销后新医生接诊时走"申请-准入"</td></tr>
+    <tr><td>急诊/值班场景</td><td>看不到患者历史</td><td>直接可见（越权风险）</td><td>急诊医生发现无 workspace → 走"申请-准入"流，owner 收到申请后决定加 member</td></tr>
+    <tr><td>离职/调岗</td><td>owner 走人即数据孤儿</td><td>其他医生继续可见</td><td>owner 走人 → workspace 仍存；后续接诊医生走"申请-准入"；本阶段不做转让（预留 API）</td></tr>
+  </table>
+  <div class="ok"><b>推荐方案 C（v0.3 拍板）</b>，对齐临床"我的患者我做主"的工作习惯。共享路径单一（仅成员授予 API），权限模型最简；隐私患者天然满足（无须降级开关）。代价：协作需要 owner 主动行为——通过 UI 引导（owner 邀请按钮 + 急诊申请通知）解决。</div>
+  <h3>4.1 成员授予场景矩阵</h3>
+  <table>
+    <tr><th>场景</th><th>触发方式</th><th>AIMS 侧动作</th><th>DSH API</th></tr>
+    <tr><td>首诊医生</td><td>首次对该患者用 AI</td><td>ensure 后自动 grantWorkspaceMember(owner)</td><td><code class="inline">POST /mu/v1/workspaces/{id}/members</code>（role=owner）</td></tr>
+    <tr><td>复诊（同医生）</td><td>owner 再次打开 uAI</td><td>直接命中 owner 成员记录，零动作</td><td>——</td></tr>
+    <tr><td>转科会诊</td><td>原 owner 主动邀请</td><td>owner 在患者 tab 点"邀请医生" → grantWorkspaceMember(writer/reader)</td><td><code class="inline">POST /mu/v1/workspaces/{id}/members</code></td></tr>
+    <tr><td>急诊/值班</td><td>急诊医生发现无 workspace</td><td>走"申请-准入"流：急诊医生在患者 tab 点"申请访问" → AIMS 侧通知 owner → owner 审批 grantWorkspaceMember(reader)</td><td>同上</td></tr>
+    <tr><td>医生调岗</td><td>原 owner 撤销 + 新医生接诊</td><td>原 owner 撤销（DELETE member）+ 新医生走"申请-准入"或 owner 邀请</td><td><code class="inline">DELETE /mu/v1/workspaces/{id}/members/{uid}</code> + grant</td></tr>
+    <tr><td>离职</td><td>HR 同步 owner 状态</td><td>owner 不撤销 workspace → workspace 沉淀，新接诊医生走"申请-准入"；本阶段不做转让</td><td>——</td></tr>
+  </table>
+  <div class="tip"><b>为什么不默认共享给同科室医生？</b>三个原因：① 临床事实是首诊医生主导治疗，贸然全科可见会扩大暴露面（VIP/敏感病/医学纠纷风险）；② DSH RLS 已能兜底，但 RLS 失效时的兜底代价高；③ owner 主动邀请的每一步都在 audit_log 可追溯，纠纷时可还原"谁在什么时候获得了访问权"。</div>
+  <div class="warn"><b>本阶段不做</b>（避免范围蔓延）：① workspace 转让（<code class="inline">workspaces:transfer</code> API 预留不实现）；② 一次性授权链接（远程会诊）；③ 按角色模板邀请（同科室自动加）；⑤ 跨院区 share（跨 tenant）。这些统一留给 DSH Phase 2 / AIMS 阶段 4。</div>
+</section>
+
+<section>
+  <h2>五、AIMS 侧新增组件与代码落点</h2>
+  <h3>5.1 服务端（.NET，随 AIMS 医生站服务端，FreeSql + PostgreSQL）</h3>
+  <table>
+    <tr><th>组件</th><th>职责</th><th>要点</th></tr>
+    <tr><td><code class="inline">DshProvisioningService</code></td><td>ensure 链编排（tenant/user/患者空间/就诊会话/成员授予）</td><td>所有调用带 <code class="inline">biz_key</code>（namespace.bizkey 不透明字符串，2.5 约定）；<b>写操作走 ensure，定位走 <code class="inline">GET /mu/v1/lookup</code></b>；失败分类（DSH 不可达 / 业务拒绝）返回不同错误码</td></tr>
+    <tr><td><code class="inline">DshTokenService</code></td><td>机器 Key 保管 + token:issue 换发 + JWT 缓存（内存，TTL 同步）</td><td>按 userKey 缓存未过期 JWT，避免每次开 tab 都换发</td></tr>
+    <tr><td><code class="inline">DshLookupService</code></td><td>（v2026-09-06 增）DSH 反查包装：<code class="inline">lookup(type, biz_key)</code> 走 DSH <code class="inline">GET /mu/v1/lookup</code>，命中返回内部 id，未命中抛 <code class="inline">NotFound</code>；请求作用域内存缓存 (workspaceId/sessionId/dshUserId)</td><td>唯一真相源 = DSH，零持久化</td></tr>
+    <tr><td><code class="inline">DshPatientContextService</code></td><td>患者快照组装 + 脱敏 + 注入下发</td><td>数据源走 AIMS 既有 HIS/EMR 视图；快照结构见第十节</td></tr>
+    <tr><td><b>API 端点</b></td><td><code class="inline">GET /api/dsh/panel-context</code>（前端唯一入口）<br><code class="inline">POST /api/dsh/workspaces/{cureno}/archive</code>（出院钩子调用）</td><td>panel-context 一次返回 ensure 结果 + panelUrl + token；内部调用 2.2 全链</td></tr>
+    <tr><td><b>配置项</b>（AppSettings）</td><td>DshBaseUrl / DshApiKey / DshTenantKey / TokenTtlMinutes / UaiPanelUrl 模板</td><td>UaiPanelUrl 保留现有配置节点，语义升级为模板</td></tr>
+  </table>
+  <h3>5.2 前端（Angular，patient 模块）</h3>
+  <table>
+    <tr><th>落点</th><th>改动</th><th>说明</th></tr>
+    <tr><td><code class="inline">patient-uai-tab</code></td><td>URL 来源从 <code class="inline">AppSettingobject.UaiPanelUrl</code> 直读 → 改调 <code class="inline">/api/dsh/panel-context</code></td><td>独立路由 + 缓存 URL 到 property 的现有形态不动；DSH 不可达时渲染重试占位（保持 iframe 不挂错 src）</td></tr>
+    <tr><td><code class="inline">iframe-message.service</code></td><td>协议 v2 分支（第七节）：下行 aims-open-ctx / 上行 aims-ready、aims-auth-expired、aims-ctx-opened</td><td>复用既有白名单 + Observable 管线，新增消息类型注册</td></tr>
+    <tr><td><code class="inline">ai-hub / ai-hub-bridge</code></td><td>患者切换广播补 uAI 分支：广播时若 uAI tab 激活 → 触发 panel-context 重取（切换工作空间）</td><td>复用 <code class="inline">IAiTool</code> 注册机制</td></tr>
+    <tr><td><code class="inline">notification-hub</code></td><td>危急值推送 → aims-push-alert（v1 保留）+ 可选主动 ensure 患者空间</td><td>场景 S6</td></tr>
+    <tr><td><code class="inline">uai-widget</code>（全局壳）</td><td>全局壳与患者 tab <b>同一医生身份、同一 DSH 用户</b>；全局壳不挂患者上下文（无患者选中时自然落主工作空间）</td><td>widget 侧仅需透传 panelUrl/token，无结构性改动</td></tr>
+  </table>
+  <h3>5.3 DSH 侧（回灌需求，不新写）</h3>
+  <p>dsh-aims-bridge 插件升级：协议 v2 端点 + 工作空间/会话切换调用（走 DSH 前端公开扩展面）。患者上下文注入仍坚持 at-file / 系统提示前缀，<b>不 hook 内部 store</b>（既有方案的铁律不变）。</p>
+</section>
+
+<section>
+  <h2>六、AIMS 侧零映射表（v2026-09-06 设计转向）</h2>
+  <h3>6.1 设计依据</h3>
+  <p><b>结论先行：AIMS 侧不建立任何"业务键 ↔ DSH 内部 id"持久化映射表。</b>所有对应关系由 DSH 侧承担：</p>
+  <table>
+    <tr><th>实体</th><th>AIMS 业务键</th><th>DSH 表 + 业务键列</th><th>DSH 唯一索引</th><th>反查入口</th></tr>
+    <tr><td>医生</td><td>userCode（如 D2024001）</td><td><code class="inline">app_user.biz_key = aims.{userCode}</code></td><td><code class="inline">UNIQUE (tenant_id, biz_key)</code></td><td><code class="inline">GET /mu/v1/lookup?type=user&amp;biz_key=aims.D2024001</code></td></tr>
+    <tr><td>患者</td><td>cureno（如 CURE123）</td><td><code class="inline">workspace.biz_key = patient.{cureno}</code></td><td><code class="inline">UNIQUE (tenant_id, biz_key)</code></td><td><code class="inline">GET /mu/v1/lookup?type=workspace&amp;biz_key=patient.CURE123</code></td></tr>
+    <tr><td>就诊</td><td>visitId（如 V20260906001）</td><td><code class="inline">session_meta.biz_key = visit.{visitId}</code></td><td><code class="inline">UNIQUE (tenant_id, biz_key)</code></td><td><code class="inline">GET /mu/v1/lookup?type=session&amp;biz_key=visit.V20260906001</code></td></tr>
+  </table>
+  <div class="tip"><b>三前缀命名空间约定（与 DSH 方案第十六节同步）：</b><code class="inline">aims.*</code>（AIMS 内部主键）、<code class="inline">patient.*</code>（患者）、<code class="inline">visit.*</code>（就诊）—— 强制隔离避免 AIMS 自增 ID 跟 cureno/visitId 撞 namespace。DSH 不解析 <code class="inline">biz_key</code> 语义，仅存储与索引。</div>
+  <h3>6.2 读路径缓存策略（仅请求作用域内存缓存）</h3>
+  <p>panel-context 请求处理顺序：</p>
+  <ol>
+    <li>查当前请求作用域的<b>内存缓存</b>（<code class="inline">ConcurrentDictionary</code>，TTL=请求结束）：若 (workspaceId, sessionId, dshUserId) 全部命中 → 跳过 lookup + ensure，仅需 token 缓存命中即可秒回；</li>
+    <li>任一未命中 → 调 <code class="inline">DshLookupService</code> 走 <code class="inline">GET /mu/v1/lookup</code>，DSH 按 <code class="inline">UNIQUE (tenant_id, biz_key)</code> 索引返回内部 id；</li>
+    <li>lookup 返回 <code class="inline">NotFound</code> → 调对应 ensure 族（<code class="inline">POST /mu/v1/ensure/{type}</code>）做幂等创建/查找；</li>
+    <li>缓存命中但 DSH 调用失败 → 清缓存重试一次（自愈，不持久化所以无需清理）；</li>
+  </ol>
+  <div class="warn"><b>为什么不做跨请求持久化？</b>① AIMS 服务端进程重启 = 缓存自然失效，零维护成本；② DSH 是唯一真相源，持久化 AIMS 缓存 = 引入第二份状态（要双向同步/对账）；③ token:issue 每次开 tab 都重新换发（短 TTL），entity id 在请求内就够用。</div>
+  <h3>6.3 状态变更翻译（AIMS 业务事件 → DSH 状态字段）</h3>
+  <table>
+    <tr><th>AIMS 业务事件</th><th>DSH 翻译</th><th>触发点</th></tr>
+    <tr><td>医生首次打开 uAI tab</td><td><code class="inline">ensure app_user (biz_key=aims.{userCode})</code> → <code class="inline">ensure workspace (biz_key=aims.{userCode}-main, privacy=private)</code></td><td>patient-uai-tab ngOnInit 懒开通</td></tr>
+    <tr><td>选中患者开 uAI tab（首诊）</td><td><code class="inline">ensure workspace (biz_key=patient.{cureno}, privacy=private)</code> + <code class="inline">workspace_member</code> 授予 <b>owner</b></td><td>同上</td></tr>
+    <tr><td>选中患者开 uAI tab（非首诊）</td><td><code class="inline">lookup workspace (biz_key=patient.{cureno})</code> → 当前医生已是 member 直接进；否则走"申请-准入"流（待 owner 审批）</td><td>同上</td></tr>
+    <tr><td>owner 主动邀请其他医生</td><td><code class="inline">POST /mu/v1/workspaces/{id}/members</code>（role=writer/reader）</td><td>owner 在患者 tab 点"邀请医生"</td></tr>
+    <tr><td>首次发起该 visit 对话</td><td><code class="inline">ensure session (biz_key=visit.{visitId}, workspace_id=...)</code></td><td>bridge 上行 <code class="inline">aims-session-opened</code> 或首次对话触发</td></tr>
+    <tr><td>患者出院</td><td><code class="inline">PATCH workspace.status = 'archived'</code> + <code class="inline">PATCH session_meta.status = 'closed'</code></td><td>HIS 出院结算钩子 / T+1 批任务</td></tr>
+    <tr><td>医生调岗/离职</td><td><code class="inline">DELETE workspace_member</code>（不再读/写该工作空间）；workspace 不撤销（沉淀待新医生申请-准入）</td><td>HR 同步</td></tr>
+  </table>
+  <div class="ok"><b>DSH 内部自洽</b>：所有变更走 DSH 自身 API（<code class="inline">POST /mu/v1/ensure/{type}</code> + <code class="inline">PATCH /mu/v1/workspaces/{id}</code> + <code class="inline">DELETE /mu/v1/workspaces/{id}/members/{uid}</code>）。AIMS 侧不维护任何"上次同步时间/状态差量"——DSH 侧状态机 + CHECK 约束是唯一裁判。</div>
+  <h3>6.4 取消对账任务（原 6.3）</h3>
+  <p>由于 AIMS 侧<b>无持久化映射表</b>，原计划的「<code class="inline">dsh-reconcile</code>」对账任务消失。需要保留的轻量校验：DSH 侧日志中 <code class="inline">biz_key</code> 反查的 409 错误（命名冲突）→ AIMS 侧运维报警（决策点 ⑥ 拍板监控阈值）。</p>
+</section>
+
+<section>
+  <h2>七、控制面 / 数据面分层与 postMessage 协议 v2</h2>
+  <h3>7.1 两层分工</h3>
+  <table>
+    <tr><th>层</th><th>通道</th><th>承载</th><th>绝不承载</th></tr>
+    <tr><td><b>控制面</b></td><td>AIMS 服务端 ⇄ DSH apiproxy（机器渠道 API Key，mu/v1）</td><td>ensure 链、lookup 反查、成员授予、token 换发、归档/PATCH 状态</td><td>——</td></tr>
+    <tr><td><b>数据面/视图面</b></td><td>iframe postMessage（bridge ⇄ iframe-message.service，双向 origin 白名单）</td><td>工作空间/会话切换、患者快照注入、主题、语音文本、危急值提醒、auth 过期事件</td><td><b>任何创建/授权动作</b>（绕过服务端审计；且 postMessage 无法携带机器 Key）</td></tr>
+  </table>
+  <h3>7.2 协议 v2 消息清单</h3>
+  <pre>
+// 包络不变：{ v: 2, type, payload, ts }；v1 消息（set-theme/send-chat/push-alert）原样保留
+
+── 下行（AIMS → bridge）──
+{ type: "aims-open-ctx", payload: {
+    workspaceId, sessionId,           // 由服务端 ensure 产出，前端透传
+    patient: { cureno, name, bed, age, gender, diagnosis, allergies, orders, labs },
+    visit:   { visitId, visitType, date }
+} }                                    // 替代 v1 aims-set-patient（升级为带空间/会话定位）
+{ type: "aims-set-theme",  payload: { mode } }              // v1 保留
+{ type: "aims-send-chat",  payload: { text } }              // v1 保留（语音直达）
+{ type: "aims-push-alert", payload: { bed, type, level } }  // v1 保留（危急值）
+
+── 上行（bridge → AIMS）──
+{ type: "aims-ready",         payload: { dshUserId, currentWorkspaceId } }
+{ type: "aims-ctx-opened",    payload: { workspaceId, sessionId } }   // 切换完成回执
+{ type: "aims-auth-expired" }                                         // cookie/JWT 失效，请求重走换发
+{ type: "aims-session-opened", payload: { sessionId, visitId? } }     // 医生在面板内手动新开会话
+{ type: "aims-error",          payload: { code, message } }
+  </pre>
+  <div class="tip"><b>为什么 open-ctx 带患者快照而不是只带 ID？</b>快照由 AIMS 服务端组装（控制面外的一次性数据传递），bridge 无回查 AIMS 的能力（iframe 内无 AIMS 凭证、也不该有）。快照经 postMessage 送达 bridge → at-file 注入。origin 白名单保证仅 AIMS 站点可发。</div>
+  <h3>7.3 全链路时序（医生从患者列表打开 uAI tab）</h3>
+  <pre>
+医生          AIMS前端         AIMS服务端        DSH(apiproxy)      bridge(iframe)
+ │ 选中患者+开tab │                │                  │                  │
+ │──────────────▶│ GET panel-ctx  │                  │                  │
+ │               │───────────────▶│ 查映射(未命中)    │                  │
+ │               │                │ ensure 链 ──────▶│ mu_* 写入(幂等)   │
+ │               │                │ token:issue ────▶│ 签发 JWT          │
+ │               │◀───────────────│ panelUrl+ids+ctx │                  │
+ │               │ 挂 iframe(token)│                 │                  │
+ │               │────────────────────────────────────────────────────▶│ aims-ready
+ │               │◀────────────────────────────────────────────────────│
+ │               │ aims-open-ctx{ws,session,患者快照} ─────────────────▶│ 切空间+会话
+ │               │◀──── aims-ctx-opened ────────────────────────────────│ 注入 at-file
+ │ 医生开始对话   │                │                  │                  │
+  </pre>
+</section>
+
+<section>
+  <h2>八、业务场景全景矩阵</h2>
+  <table>
+    <tr><th>#</th><th>场景</th><th>触发</th><th>AIMS 动作</th><th>DSH 依赖</th><th>缺口标注</th></tr>
+    <tr><td>S1</td><td>医生首次使用</td><td>首次打开 uAI tab</td><td>ensure tenant/user/主工作空间 + 换发 token</td><td>users:ensure / workspaces:ensure / token:issue</td><td>API 需 DSH 侧新增（九节）</td></tr>
+    <tr><td>S2</td><td>日常问诊（已开通）</td><td>选中患者开 uAI tab</td><td>DSH lookup 三连全命中（请求作用域缓存） → 秒回 panelUrl；open-ctx 注入最新快照</td><td>无写操作</td><td>—（本方案阶段 2 验收场景）</td></tr>
+    <tr><td>S3</td><td>新患者首次 AI</td><td>选中患者开 uAI tab（DSH lookup NotFound）</td><td>lookup NotFound → ensure 患者空间 + 成员授予 + 就诊会话；结果回填请求作用域缓存</td><td>workspaces:ensure / members / sessions:ensure</td><td>同上</td></tr>
+    <tr><td>S4</td><td>切患者</td><td>ai-hub 患者切换广播</td><td>uAI tab 激活时重取 panel-context → open-ctx 切空间</td><td>面板切换工作空间（公开扩展面）</td><td>bridge 需实现 ws 切换</td></tr>
+    <tr><td>S5</td><td>团队协作</td><td>住院医开了 AI 分析，主任查房查看</td><td>住院医（owner）在患者 tab 邀请主任 → grantWorkspaceMember(reader)；后续主任直接可见上下文</td><td><code class="inline">workspace_member</code> + owner 主动邀请 UI</td><td>本方案阶段 2 验收场景（决策点 ① 拍板 C）</td></tr>
+    <tr><td>S6</td><td>危急值推送</td><td>notification-hub 危急值事件</td><td>push-alert + （可选）后台 ensure 患者空间</td><td>—</td><td>notification-hub 接线（前端小改）</td></tr>
+    <tr><td>S7</td><td>跨就诊回顾</td><td>医生在面板点历史会话</td><td>（无 AIMS 动作，面板内完成）</td><td>历史会话列表 + fork</td><td>DSH 方案十三章已规划 ✔</td></tr>
+    <tr><td>S8</td><td>患者出院</td><td>出院结算事件（HIS 钩子/T+1 批）</td><td>归档患者空间 + 关闭就诊会话映射</td><td>workspaces:archive（建议新增）</td><td>归档 API 为回灌需求</td></tr>
+    <tr><td>S9</td><td>医生离职/调岗</td><td>HR 同步</td><td>映射 status=disabled + 成员表移除</td><td>members:remove</td><td>数据保留策略 = 决策点 ③</td></tr>
+    <tr><td>S10</td><td>管理员审计</td><td>院感/质控查询"哪些患者被 AI 辅助过"</td><td>查 AIMS 业务表（业务审计：HIS/EMR 视角）+ 可选调 DSH 反查按 <code class="inline">biz_key</code> 校验</td><td>mu_audit 查询（四元组）</td><td>双方审计互补，不重复建设</td></tr>
+    <tr><td>S11</td><td>DSH 故障</td><td>ensure 失败/超时</td><td>uAI tab 重试占位，主流程不受影响；映射自愈</td><td>—</td><td>降级设计（3.2/6.2）</td></tr>
+    <tr><td>S12</td><td>换医生登录同一终端</td><td>AIMS 登录切换</td><td>销毁重建 iframe + 重走换发</td><td>cookie 隔离（按用户）</td><td>2.2 已覆盖</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>九、需要 DSH 侧提供的 API 契约（回灌给 dsh-multiuser）</h2>
+  <p>以下清单是 AIMS 对接的硬依赖，需并入 DSH 多租户方案的改动点清单（其第十五章）——本质上就是把其第六节「宿主嵌入渠道 + 机器渠道」两行矩阵具体化为接口：</p>
+  <table>
+    <tr><th>API</th><th>语义</th><th>幂等键 / biz_key</th><th>优先级</th></tr>
+    <tr><td><code class="inline">POST /mu/v1/tenants:ensure</code></td><td>租户 upsert</td><td>tenantKey</td><td>高（阶段 1 依赖）</td></tr>
+    <tr><td><code class="inline">POST /mu/v1/users:ensure</code></td><td>用户 upsert（username/display）</td><td><code class="inline">biz_key = aims.{userCode}</code></td><td>高（阶段 1 依赖）</td></tr>
+    <tr><td><code class="inline">POST /mu/v1/workspaces:ensure</code></td><td>工作空间 upsert，支持 bizKey / privacy / display_name / owner_user_id</td><td><code class="inline">biz_key = aims.{userCode}-main</code>（主工作空间，privacy=private）<br><code class="inline">biz_key = patient.{cureno}</code>（患者工作空间，privacy=private，v0.3 拍板 owner 私有）</td><td>高（阶段 1 依赖）</td></tr>
+    <tr><td><code class="inline">POST /mu/v1/workspaces/{id}/members</code></td><td>成员授予/移除（role ∈ {owner, writer, reader}）</td><td>(wsId, userId, role)</td><td>中（阶段 2/3 依赖）</td></tr>
+    <tr><td><code class="inline">POST /mu/v1/workspaces/{id}/sessions:ensure</code></td><td>在指定空间建/取会话</td><td><code class="inline">biz_key = visit.{visitId}</code></td><td>中（阶段 2/3 依赖）</td></tr>
+    <tr><td><code class="inline">POST /mu/v1/auth/token:issue</code></td><td>机器 Key 换发用户 JWT（uid/tid/scope/ttl）</td><td>—</td><td><b>最高（AIMS 全链路的前提）</b></td></tr>
+    <tr><td><code class="inline">POST /mu/v1/workspaces/{id}:archive</code></td><td>空间归档（PATCH status=archived，只读）</td><td>—</td><td>低（可后补，AIMS 侧先 PATCH 工作空间 status）</td></tr>
+    <tr><td><code class="inline">GET /mu/v1/lookup?type={user|workspace|session}&amp;biz_key=&amp;tenant_key=</code><br><b>v2026-09-06 增（DSH 方案 #17）</b></td><td>按 <code class="inline">UNIQUE (tenant_id, biz_key)</code> 索引反查内部 id；AIMS <code class="inline">DshLookupService</code> 主路径唯一入口</td><td>(tenant_id, biz_key)</td><td><b>最高（AIMS 零映射表设计的硬依赖）</b></td></tr>
+    <tr><td><code class="inline">POST /mu/v1/ensure/{user|workspace|session}</code><br><b>v2026-09-06 增</b></td><td>ensure 族（合并原 ensure：lookup NotFound 时调此做幂等 upsert）</td><td>(tenant_id, biz_key)</td><td>高（阶段 1 依赖）</td></tr>
+  </table>
+  <div class="warn"><b>鉴权要求</b>：以上 API 全部走机器渠道（API Key + 路径白名单），且 DSH 侧须校验 Key 作用域包含目标 tenantId（防 AIMS 的 Key 越租户写）。审计日志记 (tenantId, actorUserId=机器身份, targetEntity, traceId)。<b>v2026-09-06 增：</b><code class="inline">lookup</code> 接口也走机器渠道（与 ensure 族同 Key 同 scope），避免匿名反查被滥用；可选返回 traceId 给 AIMS 用于跨系统追踪。</div>
+</section>
+
+<section>
+  <h2>十、安全与合规（等保 / 电子病历评级视角）</h2>
+  <h3>10.1 患者快照最小集与脱敏</h3>
+  <table>
+    <tr><th>字段</th><th>取值</th><th>处理</th></tr>
+    <tr><td>标识</td><td>cureno、床号、姓名</td><td>姓名可按院方策略保留（临床必要）；<b>身份证/医保号绝不进快照</b></td></tr>
+    <tr><td>临床</td><td>诊断、过敏史、当前医嘱摘要、关键检验（含危急值）</td><td>只取"当前就诊相关"窗口，不拉全史（全史按需由医生在对话中要求，AIMS 服务端二次组装）</td></tr>
+    <tr><td>禁入域</td><td colspan="2"><b>患者快照不得写入 user/tenant 级 mu_memory</b>（DSH 侧记忆模块需支持域级禁写策略——回灌需求）；会话级上下文随会话归档，生命周期与病历对齐</td></tr>
+  </table>
+  <h3>10.2 威胁面与对策</h3>
+  <table>
+    <tr><th>威胁</th><th>对策</th></tr>
+    <tr><td>机器 Key 泄露</td><td>仅服务端持有 + 可轮换 + 作用域锁租户 + 路径白名单；轮换流程双 Key 并行过渡</td></tr>
+    <tr><td>JWT 被截获（URL 携带）</td><td>短 TTL + 一次性消费（DSH 首次 GET 后换 HttpOnly cookie，URL 中 token 不留 referrer/log——DSH 303 重定向既有行为已规避）；同站拓扑下 iframe 内不再带 token</td></tr>
+    <tr><td>跨医生越权（看到非本人患者空间）</td><td>DSH RLS 行级兜底（方案八章）+ 共享空间成员表；AIMS 侧 panel-context 校验医生与患者的科室归属关系</td></tr>
+    <tr><td>postMessage 伪造</td><td>双向 origin 白名单（既有 bridge 设计保留）；payload 校验 workspaceId/sessionId 与本次换发结果一致（防重放其他医生的空间 ID）</td></tr>
+    <tr><td>审计断链</td><td>AIMS 侧 traceId 透传给 DSH（panel-context 响应 → open-ctx → mu_audit），形成跨系统追踪链</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>十一、实施路线（与既有落地基线的关系）</h2>
+  <h3>11.1 阶段划分</h3>
+  <table>
+    <tr><th>阶段</th><th>内容</th><th>前置</th><th>验收判据</th></tr>
+    <tr><td><b>阶段 0</b></td><td>等待/联调 DSH 多租户改造第一阶段（apiproxy 认证 + <code class="inline">biz_key</code> 列 + UNIQUE 索引 + ensure 族 / lookup 族 API 落地）</td><td>DSH 侧排期（<b>v2026-09-06 增</b>：需 DSH 方案 #17 host/lookup + #18 DDL 增量先于 token:issue 落地）</td><td>九节 token:issue + ensure/lookup 族 API 可用 curl 打通；<code class="inline">UNIQUE (tenant_id, biz_key)</code> 三表索引存在</td></tr>
+    <tr><td><b>阶段 1</b></td><td>身份换发 + 主工作空间：DshTokenService / DshProvisioningService（用户段）/ <b>DshLookupService</b>（v2026-09-06 增）/ panel-context / patient-uai-tab 接线</td><td>阶段 0</td><td>两名医生并发使用互不可见对方会话；DSH 重启不掉登录；同一 userCode 重复触发零副作用（lookup 幂等）</td></tr>
+    <tr><td><b>阶段 2</b></td><td>患者工作空间 + 上下文注入：ensure 患者段 / 成员授予 / 协议 v2 open-ctx / bridge ws 切换 / 快照组装脱敏</td><td>阶段 1</td><td>切患者 → 面板空间跟随 + 快照可见；越权负向用例（无成员关系的医生 403）先红后绿</td></tr>
+    <tr><td><b>阶段 3</b></td><td>就诊会话 + 协作 + 生命周期：ensure 会话段 / 历史会话回顾 / 出院归档钩子（<code class="inline">PATCH workspace.status</code>）/ S5~S10 场景全覆盖 / <b>biz_key 命名空间监控（v2026-09-06 增）</b></td><td>阶段 2</td><td>同患者两次就诊两个会话可回看；出院后空间只读；DSH 侧 409 错误日均 <1（命名空间约定有效）</td></tr>
+    <tr><td><b>阶段 4</b></td><td>生产部署：同站反代拓扑（子域/子路径，拓扑拍板后启用）+ 密钥轮换流程 + 运维监控（<b>biz_key 命名空间 409 告警</b> + mu_audit 采样审计）</td><td>阶段 3 + 拓扑拍板</td><td>生产切换 UaiPanelUrl 模板，全场景回归</td></tr>
+  </table>
+  <h3>11.2 与既有面板集成基线（固定 token / cookie / 桥接插件 / 患者会话隔离）的关系</h3>
+  <table>
+    <tr><th>既有条目</th><th>本方案中的去向</th></tr>
+    <tr><td>固定 token 面板链路（现状）</td><td>降级为运维通道（2.4 演进表）；过渡期仍用它跑通面板链路</td></tr>
+    <tr><td>cookie SameSite 可配</td><td>不变，随阶段 4 拓扑决策启用</td></tr>
+    <tr><td>桥接插件 dsh-aims-bridge</td><td>升级为协议 v2（7.2），紧凑化 CSS 不变</td></tr>
+    <tr><td>患者维度会话隔离（缓行项）</td><td><b>正式并入本方案阶段 2/3</b>，由"每 cureno 一 session"升级为"每 cureno 一 workspace + 每 visit 一 session"两层结构</td></tr>
+    <tr><td><b>原计划的三张 AIMS 侧映射表</b><br><span style="color:#8a3a1d">v2026-09-06 取消</span></td><td>取消（零映射表设计）；改为 <code class="inline">DshLookupService</code> 走 DSH 侧 <code class="inline">biz_key</code> 反查族（DSH 方案 #17）——对应 DSH 侧 <code class="inline">UNIQUE (tenant_id, biz_key)</code> 索引承担</td></tr>
+  </table>
+  <div class="tip"><b>排期建议</b>：DSH 侧多租户方案体量大（18 改动点三阶段），AIMS 侧阶段 1 的服务端骨架（TokenService/LookupService/ProvisioningService 用户段/panel-context 端点）可以<b>并行先行开发</b>，用 DSH 侧 mock（wiremock 本地桩）跑通，DSH API 就绪后切换真身——两线不互相阻塞。<b>v2026-09-06 调整：</b>由于 AIMS 侧无映射表，AIMS 阶段 1 不再有"建表"步骤，启动摩擦更低；LookupService 是单类封装（依赖 HttpClient + 内存缓存），mock 桩 ≤200 行代码即可。</div>
+</section>
+
+<section>
+  <h2>十二、风险登记与待拍板决策点</h2>
+  <h3>12.1 风险登记</h3>
+  <table>
+    <tr><th>#</th><th>风险</th><th>概率</th><th>影响</th><th>对策</th></tr>
+    <tr><td>R1</td><td>DSH alpha API 漂移导致 ensure API 契约变动</td><td>中</td><td>高</td><td>API 契约固化在 dsh-multiuser 树外插件（其方案十九章 A 类），版本化 /mu/v1；AIMS 侧 DSH 客户端独立封装 + 契约测试</td></tr>
+    <tr><td>R2</td><td>DSH 不可用拖累 AIMS 体验</td><td>中</td><td>中</td><td>uAI tab 重试占位 + ensure 超时熔断 + 主流程零耦合（S11 降级）</td></tr>
+    <tr><td>R3</td><td>owner 邀请越权 / 急诊申请-准入被绕过</td><td>低</td><td>中</td><td>成员授予必经 audit_log（actor=apimachine + target_user + role）；负向用例 N3/N4 验证 owner 撤权后立即失效；急诊"申请-准入"流 owner 端做审批超时默认拒绝</td></tr>
+    <tr><td>R4</td><td>患者数据经 AI 对话进入 DSH 记忆库导致隐私扩散</td><td>中</td><td>高</td><td>记忆域禁写策略（10.1 回灌需求）；运维侧采样审计 DSH 记忆内容（含 biz_key 反查命中线索）</td></tr>
+    <tr><td>R5</td><td>DSH biz_key 反查族接口变更或字段漂移</td><td>低</td><td>低</td><td>DSH 侧 #17 lookup API 走树外新插件（DSH 方案十九章），版本化 /mu/v1；AIMS 侧 <code class="inline">DshLookupService</code> 独立封装 + 契约测试；6.2 内存缓存 0 持久化 = 漂移即重启即恢复</td></tr>
+    <tr><td>R6</td><td>多医生并发 ensure 同一患者空间产生竞态重复</td><td>中</td><td>中</td><td>DSH 侧 <code class="inline">UNIQUE (tenant_id, biz_key)</code> 唯一索引（upsert 原子）+ DSH 自身 <code class="inline">ON CONFLICT DO NOTHING</code> 处理；AIMS 侧无并发兜底（不存映射）</td></tr>
+    <tr><td>R7</td><td>URL 带 JWT 的日志/referrer 泄露</td><td>低</td><td>中</td><td>短 TTL + 一次性 + AIMS 侧日志脱敏（panelUrl 只记不含 token 的模板）</td></tr>
+  </table>
+  <h3>12.2 需要龙哥拍板的 5 个决策点</h3>
+  <table>
+    <tr><th>#</th><th>决策点</th><th>选项与倾向</th></tr>
+    <tr><td>①</td><td>患者工作空间归属</td><td><b>v0.3 已拍板：方案 C（首诊 owner 私有 + 主动共享，第四节）</b> — 急诊/转科走成员授予或"申请-准入"；本阶段不做转让/一次性链接/角色模板/跨院区 share</td></tr>
+    <tr><td>②</td><td>就诊会话创建时机</td><td><b>v0.4 拍板 b：立即创建</b>（§3.4）— 与患者工作空间 ensure 同原子链完成；DSH 侧 GC 回收未发消息的空会话（策略见 DSH 方案十四章）</td></tr>
+    <tr><td>③</td><td>出院/离职后的数据策略</td><td><b>v0.4 拍板 a：只归档不删</b>（§3.5）— DSH 状态字段 archived/closed，原地保留；匿名化/物理删除走独立法务评审</td></tr>
+    <tr><td>④</td><td>租户粒度</td><td><b>v0.4 拍板 a：医院=租户、科室仅作人员识别</b>（§2.5）— 不作共享边界；协作走 owner 主动成员授予（决策点 ① 拍板 C 衍生）；多院区集团化时 tenantKey 加院区前缀</td></tr>
+    <tr><td>⑤</td><td>阶段 1 是否先行（DSH mock 桩并行开发）</td><td><b>v0.4 拍板 a：先行</b>（§11.1）— AIMS 不等 DSH；LookupService ≤200 行 + WireMock Server + 三件套（DshProvisioningService/DshTokenService/DshLookupService）同步开工；DSH 同步推 Phase 0/1</td></tr>
+    <tr><td>⑥<br><span style="color:#8a3a1d">v2026-09-06 增</span></td><td>AIMS 侧 <code class="inline">biz_key</code> 命名空间约定</td><td><b>v0.4 拍板 a：三前缀命名空间</b>（§6.1）— <code class="inline">aims.*</code>（主键）/ <code class="inline">patient.*</code>（患者）/ <code class="inline">visit.*</code>（就诊）；DSH 不解析语义；冲突靠 <code class="inline">UNIQUE (tenant_id, biz_key)</code> + 409 告警兜底</td></tr>
+  </table>
+</section>
+
+<footer>
+  基于《DeepSeek-Harness-多用户租户改造方案.html》（DSH 侧唯一配套方案：租户模型/授权矩阵/biz_key + UNIQUE 索引 DDL）编写 · v0.4 全决策点拍板：① C 模型（首诊 owner 私有 + 主动共享）/ ② b 立即建会话 / ③ a 只归档不删 / ④ a 医院=租户 / ⑤ a mock 桩先行 / ⑥ a 三前缀命名空间 · 评审通过后按第十一节阶段动工
+</footer>
+
+</div>
+<script>
+(function () {
+  var toc = document.getElementById('toc');
+  var wrap = document.querySelector('.wrap');
+  var headings = wrap.querySelectorAll('h2, h3');
+  var links = [];
+  var i = 0;
+
+  headings.forEach(function (h, idx) {
+    if (!h.id) h.id = 'sec-' + idx;
+    var label = h.textContent
+      .replace(/（[^）]*）/g, '')
+      .replace(/：[^:：]*$/, '')
+      .replace(/——.*$/, '')
+      .trim();
+    var a = document.createElement('a');
+    a.href = '#' + h.id;
+    a.textContent = label;
+    a.title = h.textContent;
+    a.className = (h.tagName === 'H2') ? 'lvl1' : 'lvl2';
+    toc.appendChild(a);
+    links.push({ el: a, target: h });
+  });
+
+  function spy() {
+    var pos = window.scrollY + 120, current = -1;
+    for (var j = 0; j < headings.length; j++) {
+      if (headings[j].offsetTop <= pos) current = j;
+    }
+    links.forEach(function (l, j) {
+      l.el.classList.toggle('active', j === current);
+    });
+    var act = toc.querySelector('a.active');
+    if (act) {
+      var top = act.offsetTop - toc.offsetTop, bottom = top + act.offsetHeight;
+      if (top < toc.scrollTop + 20 || bottom > toc.scrollTop + toc.clientHeight - 20) {
+        toc.scrollTop = top - toc.clientHeight / 2;
+      }
+    }
+  }
+  window.addEventListener('scroll', spy, { passive: true });
+  window.addEventListener('resize', spy);
+  spy();
+})();
+</script>
+</body>
+</html>

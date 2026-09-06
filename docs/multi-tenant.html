@@ -1,0 +1,1540 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DeepSeek Harness 多用户（租户）改造方案：会话隔离与共享 / 用户技能 / 资产产物 / 会话记忆 / 历史会话</title>
+<style>
+  :root {
+    --bg: #f7f8fa; --card: #ffffff; --text: #1f2329; --muted: #5f6b7a;
+    --border: #e5e8ec; --accent: #4d6bfe; --accent-soft: #eef1ff;
+    --warn-bg: #fff8e6; --warn-border: #f0d48a; --warn-text: #8a6d1a;
+    --code-bg: #f6f8fa; --code-border: #e1e4e8; --code-text: #24292f;
+    --ok: #1d9e75; --ok-bg: #e1f5ee; --danger: #d85a30; --danger-bg: #fcebe7;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; line-height: 1.75; font-size: 15px; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 40px 24px 80px; }
+  header { padding: 28px 32px; background: var(--card); border: 1px solid var(--border); border-radius: 16px; margin-bottom: 24px; }
+  header h1 { margin: 0 0 8px; font-size: 24px; font-weight: 700; }
+  header .sub { color: var(--muted); font-size: 14px; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; margin-right: 8px; background: var(--accent-soft); color: var(--accent); }
+  section { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 24px 32px; margin-bottom: 20px; }
+  h2 { font-size: 19px; margin: 0 0 16px; padding-left: 12px; border-left: 4px solid var(--accent); }
+  h3 { font-size: 16px; margin: 20px 0 10px; }
+  p { margin: 10px 0; }
+  code.inline { background: var(--code-bg); border: 1px solid var(--code-border); border-radius: 4px; padding: 1px 6px; font-family: "JetBrains Mono", Consolas, "Courier New", monospace; font-size: 13px; color: var(--code-text); }
+  pre { background: var(--code-bg); border: 1px solid var(--code-border); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font-family: "JetBrains Mono", Consolas, "Courier New", monospace; font-size: 13px; line-height: 1.6; color: var(--code-text); }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+  th, td { border: 1px solid var(--border); padding: 9px 12px; text-align: left; vertical-align: top; }
+  th { background: var(--code-bg); font-weight: 600; }
+  .tip, .warn, .ok, .danger { border-radius: 10px; padding: 12px 16px; margin: 14px 0; font-size: 14px; }
+  .tip { background: var(--accent-soft); border: 1px solid #d6dcff; }
+  .warn { background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text); }
+  .ok { background: var(--ok-bg); border: 1px solid #bce8d8; }
+  .danger { background: var(--danger-bg); border: 1px solid #f5c4b3; }
+  ol, ul { padding-left: 22px; margin: 10px 0; }
+  li { margin: 6px 0; }
+  .fig { margin: 16px 0; border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: #fafbfc; }
+  footer { text-align: center; color: var(--muted); font-size: 13px; margin-top: 24px; }
+  .lvl { display:inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
+
+  /* ===== 左侧目录树 ===== */
+  .toc {
+    position: fixed; top: 0; left: 0; bottom: 0; width: 300px;
+    background: var(--card); border-right: 1px solid var(--border);
+    overflow-y: auto; padding: 18px 0 30px; z-index: 100;
+    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+  }
+  .toc::-webkit-scrollbar { width: 5px; }
+  .toc::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .toc-title {
+    font-size: 13px; font-weight: 700; color: var(--muted);
+    letter-spacing: 1px; padding: 2px 18px 10px; border-bottom: 1px solid var(--border); margin-bottom: 8px;
+  }
+  .toc a {
+    display: block; text-decoration: none; color: var(--muted);
+    font-size: 13px; line-height: 1.45; padding: 4px 14px 4px 18px;
+    border-left: 3px solid transparent;
+    transition: background .15s, color .15s;
+  }
+  .toc a.lvl1 { font-weight: 600; color: var(--text); margin-top: 5px; }
+  .toc a.lvl2 { padding-left: 40px; font-size: 12.5px; color: var(--muted); }
+  .toc a:hover { background: var(--accent-soft); color: var(--accent); }
+  .toc a.active {
+    background: var(--accent-soft); color: var(--accent);
+    border-left-color: var(--accent); font-weight: 600;
+  }
+  body { padding-left: 300px; }
+  @media (max-width: 1240px) {
+    .toc { display: none; }
+    body { padding-left: 0; }
+  }
+  html { scroll-behavior: smooth; }
+  section, header { scroll-margin-top: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>DeepSeek Harness 多用户（租户）改造方案</h1>
+  <div class="sub">
+    <span class="badge">会话隔离与共享</span>
+    <span class="badge">用户技能</span>
+    <span class="badge">用户资产与产物</span>
+    <span class="badge">会话记忆</span>
+    <span class="badge">历史会话</span>
+    <span class="badge">业界 SaaS 对标</span>
+    <span class="badge">宿主业务键反查</span>
+    <span class="badge">工作区状态机</span>
+    <br><br>
+    基于 <code class="inline">V:\SourceCode\DeepSeek-Harness\deepseek-harness</code> 源码（238 包 monorepo）逐包核实后给出的工程改造方案，是《DeepSeek-Harness-多用户逻辑架构.html》（2026-08-17）的深化版：从「能不能隔离」推进到「五大能力怎么改」。<br>
+    <b>2026-08-30 增补：</b>① 认证授权从「可选项」升级为<b>强制前提</b>——服务器形态下未认证请求一律拒绝（fail-closed），支持登录与其他授权渠道；② 新增「业界 Agent SaaS 多租户架构对标」章节（Dify / Coze / Manus-E2B / LangGraph / WorkBuddy / ChatGPT·Claude 模式），对标结论已回灌到各节改造点；③ <b>服务端数据库定型 PostgreSQL</b>（禁用 SQLite）：元数据表 DDL 全量 PG 化 + RLS 行级安全兜底，本地 CLI 保留 jsonl+sqlite；④ 新增<b>架构视图集</b>：总体架构图（三）、分模块架构图（四）、调用链路（五）、功能列表（16.1）、风险矩阵（17.2）；⑤ 新增<b>插件与设置的分级设计</b>（十）：插件三级安装（system/tenant/user）+ 用户级启用（profile patch 挪入用户桶），插件设置四级解析（schema → 系统 base → 租户策略 force/lock → 用户层），配套 plugin / plugin_policy 表与风险 R10；⑥ 新增<b>可测试性与可观察性设计</b>（十八）：对接官方 test-support 六层测试基建（llm-replay 无 Key 回放 / 快照双跑 / loader-smoke 冒烟）、验收证据三层模型、负向安全用例 N1–N6（先红后绿）、ctx.invariants 运行时不变量、可观察性三支柱（审计/指标/追踪）；⑦ 新增<b>树外零 fork 开发与升级策略</b>（十九）：16 个改动点重分类，0 项需改官方包源码（A 树外插件 + B patch 替换 + C 启动器规避 + D 独立 CLI），dsh-multiuser 独立仓库形态、六步官方升级工作流、风险 R11；⑧ 新增<b>数据库关系图</b>（14.1）：十张表 ER 图（五域着色、十五条外键、多态/冗余列注记）+ 外键关系清单（含级联策略）；⑨ <b>表名去除 mu_ 前缀</b>
+    <b>2026-09-06 增补（响应《AIMS-DSH 多租户对接方案》回灌，第一轮）：</b>① <b>宿主业务键反查</b>——app_user / workspace / session_meta 各加 <code class="inline">biz_key TEXT</code> 列与 <code class="inline">UNIQUE (tenant_id, biz_key)</code> 唯一索引，DSH 不解析业务键语义（由 AIMS 算好后以不透明字符串传入），对外暴露 <code class="inline">GET /mu/v1/lookup?type=user|workspace|session&amp;biz_key=&amp;tenant_key=</code> 反查族；② <b>workspace 增列 status / privacy</b>——status TEXT（active/archived）+ privacy TEXT（shared/private，business-policy 翻译层），业务事件（出院、调岗）由 AIMS 翻译为 status/privacy 变更的 API 调用；③ <b>改动点清单 + 16.1 功能列表 + 风险 R12</b> 同步追加；④ <b>ER 图 14.1</b> 实体盒增列 + 业务键唯一索引虚线标注。<b>2026-09-06 增补（第二轮：API 契约镜像）：</b>⑤ <b>扩展 #17 ensure 族</b>——<code class="inline">POST /mu/v1/ensure/{type}</code> 增加 <code class="inline">tenant</code> 类型（AIMS 部署时一次性 <code class="inline">tenants:ensure</code> 用），共 4 类；⑥ <b>新增 14.2 <code class="inline">/mu/v1</code> API 契约汇总表</b>——9 个端点逐条编号（含 Google AIP-136 风格的 <code class="inline">:archive</code> 操作型端点），是 AIMS 第九节表格在 DSH 侧的权威镜像，AIMS 实施直接按此契约对接；⑦ <b>机器渠道审计 actor 语义</b>——机器身份（uid=apimachine / tenant.system）显式登记，独立于人类用户，审计四元组中 userId 字段允许 = 机器身份；⑧ <b>traceId 跨系统透传</b>（18.5 可观察性支柱之三）：AIMS panel-context 响应携带的 traceId 透传到 DSH apiproxy → 写 audit_log / log metadata → bridge 上行同步，可跨 AIMS / DSH 双向排查。按 PG 用语习惯直接命名——tenant / app_user（user 为 PG 保留字故加 app_）/ workspace / workspace_member / session_meta（区别于 dsh 现有 session 概念）/ session_share / memory / artifact / plugin / plugin_policy / audit_log，DDL、外键引用、ER 图标签全量同步。
+  </div>
+</header>
+
+<section>
+  <h2>〇、结论先行</h2>
+  <div class="ok"><b>总判断：dsh 的插件化底座让多用户改造的「手术切口」都落在数据层与服务装配层，核心引擎（agent-loop / tools / llm）几乎不用动。</b>五个诉求全部有现成的接缝（seam）可切入：</div>
+  <p><b>前提（2026-08-30 与业界对标后明确）：</b>服务器形态下<b>认证授权是强制门槛</b>——登录（OIDC/SSO）或其他授权渠道（API Key、一次性授权链接、宿主代发 Token）二选一以上，未认证一律 401；「用户」是一切能力的第一维。业界对标详见第一节。</p>
+  <table>
+    <tr><th>诉求</th><th>现有接缝（源码已存在）</th><th>改造核心动作</th><th>难度</th></tr>
+    <tr><td>会话隔离</td><td><code class="inline">session-persistence</code> 后端可插拔（jsonl ↔ sqlite）；Cordis <code class="inline">ctx.isolate()</code></td><td>会话存储加 <code class="inline">userId</code> 归属 + 请求级上下文注入</td><td>中</td></tr>
+    <tr><td>会话共享</td><td><code class="inline">SessionHeader.lineage</code> 血缘 + <code class="inline">session-log-export</code>（ZIP 导出）+ resume 语义</td><td>新增 share 表 + fork（以他人会话为种子的新会话）</td><td>中</td></tr>
+    <tr><td>用户技能</td><td><code class="inline">dsh-skill</code> 注册表本就支持多 provider 按 rank 合并，<code class="inline">skill-filesystem</code> 支持任意 root 目录</td><td>用户级 root = <code class="inline">/users/&lt;uid&gt;/skills</code>，租户级/全局级再加两个 rank，<b>几乎零引擎改动</b></td><td><b>低</b></td></tr>
+    <tr><td>用户资产与产物</td><td><code class="inline">attachment-local</code>、<code class="inline">spill-local</code> 均以 <code class="inline">DSH_HOME</code> 为根落盘；storage-domain 支持 KV 域</td><td>DSH_HOME 目录重构为按用户分桶 + 新增 artifact 归属元数据</td><td>中</td></tr>
+    <tr><td>会话记忆 / 历史会话</td><td><code class="inline">compaction</code> 摘要 + <code class="inline">session_projcache</code> 投影缓存 + <code class="inline">session-query</code>（SQLite FTS5 全文检索、5 个模型侧工具）</td><td>查询服务加用户过滤器；新增 user-memory 域做跨会话记忆</td><td>中</td></tr>
+  </table>
+  <p><b>实施路线一句话版：</b>Phase 0「每用户独立 DSH_HOME 进程」（不改代码，先能用）→ Phase 1「单进程多租户上下文」（本次方案主体）→ Phase 2「共享与协作」（share/fork/团队工作区）。详见第十六节。<b>文档导航：</b>总体架构图见三，分模块架构见四，调用链路见五，插件与设置分级见十，功能列表见 16.1，风险矩阵见 17.2，可测试性见十八，零 fork 升级策略见十九。</p>
+</section>
+
+<section>
+  <h2>一、业界对标：六个 Agent SaaS 平台的多租户做法（2026-08-30 检索核实）</h2>
+  <div class="danger"><b>前提修正（龙哥拍板）：</b>未来 DSH 是<b>服务器部署、登录或授权后才能使用</b>的形态——「用户」不再是可选层，而是<b>一切能力的第一维</b>。未认证请求一律拒绝（fail-closed），不再有匿名模式；本地 CLI 单机形态作为特例（uid=local）保留兼容。</div>
+
+  <h3>1.1 六个代表性平台的做法</h3>
+  <table>
+    <tr><th>平台</th><th>租户模型</th><th>隔离实现（关键细节）</th><th>认证授权</th><th>对 DSH 的启示</th></tr>
+    <tr>
+      <td><b>Dify</b><br>（开源，toB 范本）</td>
+      <td>Tenant = Workspace，一级隔离边界；账号↔租户多对多（TenantAccountJoin 表，current 标记当前活跃工作区）</td>
+      <td>① 所有核心实体带 <code class="inline">tenant_id</code> 外键，查询自动按租户上下文过滤；② <b>每租户独立 RSA 加密密钥</b>（encrypt_public_key）加密敏感凭证；③ 沙箱独立 Go 服务 + SSRF 代理双网络隔离；④ 角色五级：owner/admin/editor/normal/dataset_operator</td>
+      <td>OAuth/SSO/API Key，登录装饰器强制注入当前租户上下文</td>
+      <td>「tenant_id everywhere + 单点上下文注入」与方案的元数据表 + apiproxy 注入完全同构；<b>租户级加密密钥</b>值得直接抄</td>
+    </tr>
+    <tr>
+      <td><b>Coze（扣子）</b></td>
+      <td>「空间 space」概念替代 tenant，逻辑同构；单用户多空间</td>
+      <td>数据库层面租户=空间的改名；toB 大集团场景普遍要求<b>租户 + 空间双层甚至父子租户</b>定制</td>
+      <td>字节账号体系</td>
+      <td>医疗场景科室（租户）+ 亚专科/项目组（空间）可能需要双层——workspace 已预留 tenant_id 归属，够用</td>
+    </tr>
+    <tr>
+      <td><b>Manus + E2B</b><br>（Agent-in-Sandbox 模式）</td>
+      <td>每用户/每任务独立沙箱实例</td>
+      <td>① Firecracker microVM（~150ms 启动），沙箱可 pause/resume、付费用户持久化 14 天；② 规划器（Planner）在控制平面、执行 Agent 在沙箱内；③ 控制平面「运维三件套」：任务注入、日志拉取、快照回收 + 强制超时/并发上限/每用户配额</td>
+      <td>账号 + credits 计费</td>
+      <td>执行环境隔离的终局形态：dsh 已有 sandbox 可插拔层与 e2b 包，Phase 2 升级为每会话容器/VM 有现成路径</td>
+    </tr>
+    <tr>
+      <td><b>LangGraph Platform</b><br>（社区共识做法）</td>
+      <td>应用层 conversations 表持有 tenant_id/user_id，thread_id 只做会话 ID</td>
+      <td>「<b>逻辑隔离为主、物理隔离兜底</b>」：① 应用层表 + 强制过滤；② PostgreSQL <b>RLS 行级安全</b>做最后防线——应用代码漏写 WHERE 数据库也拦得住；③ Store 分层 namespace；④ <b>禁忌：不要把 user/tenant 编码进 thread_id 或 checkpoint_ns</b></td>
+      <td>请求级身份来自 auth 层，thread_id 由服务端会话层生成</td>
+      <td>① 「归属放应用层表、不编码进 ID」正是 session_meta 的设计；② RLS 兜底直接采用——服务器模式 PostgreSQL 原生 RLS（见 8.1、第十四节），本地 CLI 的 SQLite 才用 authorizer 回调模拟</td>
+    </tr>
+    <tr>
+      <td><b>WorkBuddy</b><br>（本平台，可内部观察）</td>
+      <td>登录账号制（个人/团队）+ 积分配额</td>
+      <td>① 会话严格按用户隔离，跨会话检索走服务端；② <b>三层记忆</b>：云端用户画像（服务端自动注入）+ 用户级本地 MEMORY.md + 项目级 memory 目录——正是方案 L3/L4 的现成范本；③ 技能分<b>用户级/项目级</b>两层安装；④ 连接器按用户 OAuth 授权，凭证互不可见；⑤ 沙盒执行，产物回收到用户可见的会话产物区</td>
+      <td>登录（微信/QQ/企业）+ 连接器级二次授权</td>
+      <td>L3/L4 记忆分层、技能双层安装、凭证按用户隔离——三条直接对齐方案第五/七节与 app_user.credential</td>
+    </tr>
+    <tr>
+      <td><b>ChatGPT / Claude Code 桌面 / Perplexity</b><br>（Code-Interpreter-Sandbox 模式）</td>
+      <td>用户 → 会话 → 执行沙箱，沙箱只是工具</td>
+      <td>「大脑在受控服务器进程，手脚在沙箱」；<b>API Key 留在服务器不进沙箱</b>（与 Agent-in-Sandbox 的关键差异）；沙箱是黑盒，rm -rf 也不影响宿主</td>
+      <td>账号 + API Key 作用域控制</td>
+      <td><b>DSH 现状就是这个模式</b>（agent-loop 在服务进程、sandbox 只执行）——架构选型上已站在安全的一侧，Phase 1 无需动执行模型</td>
+    </tr>
+  </table>
+
+  <h3>1.2 业界通用规律（多篇生产实践总结）</h3>
+  <ol>
+    <li><b>严禁多用户共用 Agent 运行实例</b>——一用户（至少一会话）一隔离实例，实例间状态零共享；共享只发生在数据层（带归属过滤）。</li>
+    <li><b>身份来自认证层，绝不来自客户端自报</b>——thread_id / session_id 由服务端从身份派生或登记，客户端自报 ID 会造成越权与历史丢失。</li>
+    <li><b>租户过滤必须收敛到单点 + 数据库兜底</b>——应用层靠「所有查询过同一个上下文过滤器」（Dify 的装饰器 / 方案的 sessionQuery 可见集），数据库层靠 RLS（LangGraph）做最后防线，防「有人写 SQL 手滑漏了 tenant_id」。</li>
+    <li><b>凭证隔离到用户/租户级</b>——Dify 每租户独立密钥、WorkBuddy 连接器按用户授权；全局明文凭证（现状 .credentials.yaml）在多租户下是高危项。</li>
+    <li><b>控制平面四件套：超时、并发上限、配额、审计</b>——Manus / Dify 均在网关/中间件层强制执行，不依赖 Agent 自觉。</li>
+    <li><b>大文件走对象存储，不进 OLTP</b>——会话日志、导出物、附件按桶/前缀放文件系统或对象存储，数据库只存元数据与索引（dsh 现状 jsonl+zstd + storages 元数据天然符合）。</li>
+  </ol>
+
+  <h3>1.3 对标结论 → 回灌到本方案的增量</h3>
+  <table>
+    <tr><th>采纳项</th><th>来源</th><th>落点（本方案章节）</th></tr>
+    <tr><td>认证 = 强制门槛，fail-closed；支持登录 + Token + 授权链接多渠道</td><td>全部平台 / 龙哥拍板</td><td>二（认证渠道矩阵）、十（#1）</td></tr>
+    <tr><td>tenant 加 encrypt_key 字段；app_user.credential 用租户密钥加密</td><td>Dify 租户密钥</td><td>九（DDL）、十（#12）</td></tr>
+    <tr><td>服务器数据库 PostgreSQL + 原生 RLS 行级安全兜底（应用层漏拼 WHERE 也拦得住）</td><td>LangGraph RLS</td><td>八 8.1、十四</td></tr>
+    <tr><td>会话 uuid 保持纯净，归属只放 session_meta 表（不编码进 ID）</td><td>LangGraph 禁忌条</td><td>九（已如此设计，确认保留）</td></tr>
+    <tr><td>apiproxy 中间件四件套：超时 / 并发上限 / 每用户配额 / 审计日志</td><td>Manus 控制平面</td><td>十五（#1 扩充）、十七</td></tr>
+    <tr><td>角色起步 reader/writer，预留 owner/admin（对齐 Dify 五级角色的前两级）</td><td>Dify 角色体系</td><td>九（workspace_member）</td></tr>
+    <tr><td>执行隔离升级路线：sandbox-local → 每会话容器/VM（e2b 包现成）</td><td>Manus/E2B</td><td>十一（Phase 2）</td></tr>
+    <tr><td>L3/L4 记忆 + 技能双层安装 + 凭证按用户隔离</td><td>WorkBuddy 三层记忆/双层技能</td><td>五、七（已如此设计，确认对齐）</td></tr>
+    <tr><td>保持「大脑在服务器、沙箱只执行」模式，API Key 不进沙箱</td><td>ChatGPT/Claude 桌面模式</td><td>现有架构即已满足，Phase 1 不动</td></tr>
+  </table>
+  <div class="ok"><b>总评：方案的骨架与业界主流完全同构</b>（tenant_id everywhere + 请求级上下文注入 + 可插拔沙箱 + 归属放应用层表），对标后主要是<b>加固三处</b>：租户加密密钥、数据库级越权兜底（authorizer/RLS）、网关四件套（超时/并发/配额/审计）。</div>
+</section>
+
+<section>
+  <h2>二、现状盘点：与五大诉求相关的源码事实（2026-08-30 核实）</h2>
+  <table>
+    <tr><th>子系统</th><th>包</th><th>现状事实</th><th>用户维度</th></tr>
+    <tr><td>身份</td><td><code class="inline">identity/anonymous-user-id</code></td><td>每个 harness home 一个匿名 UUID，仅遥测/反馈携带；无账号、无认证、无租户</td><td><b>无</b></td></tr>
+    <tr><td>技能</td><td><code class="inline">dsh-skill</code> + <code class="inline">skill-filesystem</code> + <code class="inline">tool-skill</code></td><td>注册表合并多 provider 目录，rank 顺序：100 项目 <code class="inline">.dsh/skills</code> → 200 项目 <code class="inline">.agents/skills</code> → 300 自定义 → 400 用户 <code class="inline">~/.dsh/skills</code> → 500 <code class="inline">~/.agents/skills</code> → 600 内置 bundle；同名按层 first-wins；目录 watcher 热生效</td><td><b>无</b>（rank 400 是「本机用户」而非「应用用户」）</td></tr>
+    <tr><td>会话存储</td><td><code class="inline">session-persistence</code>（jsonl / sqlite 双后端）</td><td>持久化单元是 <code class="inline">SessionEvent</code> 追加日志 + <code class="inline">SessionHeader</code>（格式版本、工作目录、<b>lineage 血缘</b>、seed 边界）；append-only、连续序号、崩溃恢复</td><td><b>无</b>（按工作区转义路径分目录）</td></tr>
+    <tr><td>历史检索</td><td><code class="inline">session-query</code> 家族（query / query-sqlite / log-export / tool-session-query）</td><td>统一服务 <code class="inline">ctx.sessionQuery</code>：精确读取、血缘追踪、过滤列表、FTS5 全文搜索；模型侧 5 个工具带 <b>workspace 授权边界</b>；Web <code class="inline">/export</code> 命令下载会话 ZIP</td><td><b>无</b>（授权只到工作区层）</td></tr>
+    <tr><td>工作区</td><td><code class="inline">workspace</code>（<code class="inline">ctx.workspaceRegistry</code>）</td><td>命名、有序的项目列表，会话按目录分组；删除项目不删目录与历史；纯宿主侧，模型不可见</td><td><b>无</b></td></tr>
+    <tr><td>资产（附件）</td><td><code class="inline">attachment-local</code>（<code class="inline">ctx.attachments</code>）</td><td>图片附件持久化在 DSH_HOME 下，重启不丢、永不自动删除、历史回显</td><td><b>无</b></td></tr>
+    <tr><td>产物（溢出物）</td><td><code class="inline">spill-local</code>（<code class="inline">ctx.spillStore</code>）</td><td>超限工具输出全文存为会话作用域的私有 spill 文件，模型拿到定位符可回读</td><td>会话作用域，无用户归属</td></tr>
+    <tr><td>记忆（近似）</td><td><code class="inline">compaction</code> 家族 + <code class="inline">session_projcache</code></td><td>长对话自动压缩为摘要（/compact 手动）；投影缓存存 stats/title/tokenUsage；<b>没有独立的跨会话记忆模块</b></td><td>跟随会话/工作区</td></tr>
+    <tr><td>元数据存储</td><td><code class="inline">storage</code> / <code class="inline">storage-json</code> / <code class="inline">storage-sqlite</code> / <code class="inline">storage-domain</code></td><td>非会话数据统一走命名后端；storage-domain 提供 schema 校验 + 变更事件的 KV 域；后端可整体替换</td><td><b>无</b>（全局单例）</td></tr>
+    <tr><td>宿主入口</td><td><code class="inline">host/webserver</code>（127.0.0.1:3080）+ <code class="inline">apiproxy</code></td><td>所有客户端 RPC 走 apiproxy 单一入口，无请求级身份</td><td><b>无</b></td></tr>
+  </table>
+  <div class="tip"><b>为什么说底座好：</b>这五条接缝（多 provider 注册表、可插拔持久化后端、血缘 Header、KV 域存储、apiproxy 唯一入口）正好对应五个诉求的改造切口——dsh 作者把「能力」和「实现」拆开的 Seams 设计，让多租户改造不用碰 <code class="inline">agent-loop</code> 一行代码。</div>
+</section>
+
+<section>
+  <h2>三、总体架构图（六层视图）</h2>
+  <div class="fig">
+    <svg viewBox="0 0 680 668" width="100%" role="img" xmlns="http://www.w3.org/2000/svg">
+    <title>DSH 多用户总体架构：六层视图</title>
+    <defs>
+    <marker id="m3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    </defs>
+    <text x="40" y="22" font-family="sans-serif" font-size="15" font-weight="500" fill="#1f2329">总体架构：自上而下六层，手术切口集中在 ②③⑤，核心引擎 ④ 零改动</text>
+
+    <!-- L1 接入层 -->
+    <rect x="40" y="36" width="600" height="86" rx="12" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="56" y="58" font-family="sans-serif" font-size="13" font-weight="500" fill="#0C447C">① 接入层（谁在用）</text>
+    <rect x="56" y="68" width="128" height="42" rx="8" fill="#ffffff" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="120" y="85" font-family="sans-serif" font-size="12" fill="#0C447C" text-anchor="middle">Web UI（浏览器）</text>
+    <text x="120" y="101" font-family="sans-serif" font-size="11" fill="#5f6b7a" text-anchor="middle">OIDC / SSO 登录</text>
+    <rect x="196" y="68" width="128" height="42" rx="8" fill="#ffffff" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="260" y="85" font-family="sans-serif" font-size="12" fill="#0C447C" text-anchor="middle">宿主嵌入</text>
+    <text x="260" y="101" font-family="sans-serif" font-size="11" fill="#5f6b7a" text-anchor="middle">uai-widget / AIMS 代发 JWT</text>
+    <rect x="336" y="68" width="128" height="42" rx="8" fill="#ffffff" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="400" y="85" font-family="sans-serif" font-size="12" fill="#0C447C" text-anchor="middle">本地 CLI（特例）</text>
+    <text x="400" y="101" font-family="sans-serif" font-size="11" fill="#5f6b7a" text-anchor="middle">uid = local，免认证</text>
+    <rect x="476" y="68" width="148" height="42" rx="8" fill="#ffffff" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="550" y="85" font-family="sans-serif" font-size="12" fill="#0C447C" text-anchor="middle">机器渠道</text>
+    <text x="550" y="101" font-family="sans-serif" font-size="11" fill="#5f6b7a" text-anchor="middle">作用域 API Key / 一次性链接</text>
+
+    <line x1="340" y1="122" x2="340" y2="142" stroke="#854F0B" stroke-width="1.5" marker-end="url(#m3)"/>
+    <text x="350" y="138" font-family="sans-serif" font-size="11" fill="#854F0B">Bearer JWT / API Key</text>
+
+    <!-- L2 网关层 -->
+    <rect x="40" y="142" width="600" height="86" rx="12" fill="#FFF8E6" stroke="#BA7517" stroke-width="0.5"/>
+    <text x="56" y="164" font-family="sans-serif" font-size="13" font-weight="500" fill="#854F0B">② 网关层：apiproxy + host/auth（新增）—— 一切请求的唯一入口</text>
+    <rect x="56" y="174" width="278" height="42" rx="8" fill="#ffffff" stroke="#BA7517" stroke-width="0.5"/>
+    <text x="195" y="191" font-family="sans-serif" font-size="12" fill="#854F0B" text-anchor="middle">认证中间件（fail-closed）</text>
+    <text x="195" y="207" font-family="sans-serif" font-size="11" fill="#5f6b7a" text-anchor="middle">解析不出身份一律 401，无匿名兜底</text>
+    <rect x="346" y="174" width="278" height="42" rx="8" fill="#ffffff" stroke="#BA7517" stroke-width="0.5"/>
+    <text x="485" y="191" font-family="sans-serif" font-size="12" fill="#854F0B" text-anchor="middle">网关四件套 + 审计</text>
+    <text x="485" y="207" font-family="sans-serif" font-size="11" fill="#5f6b7a" text-anchor="middle">超时 · 并发上限 · 每用户配额 · 审计日志</text>
+
+    <line x1="340" y1="228" x2="340" y2="248" stroke="#712B13" stroke-width="1.5" marker-end="url(#m3)"/>
+    <text x="350" y="244" font-family="sans-serif" font-size="11" fill="#712B13">userId / tenantId（请求作用域）</text>
+
+    <!-- L3 请求作用域层 -->
+    <rect x="40" y="248" width="600" height="86" rx="12" fill="#FAECE7" stroke="#993C1D" stroke-width="0.5"/>
+    <text x="56" y="270" font-family="sans-serif" font-size="13" font-weight="500" fill="#712B13">③ 请求作用域层：host/multiuser-context（新增，改造核心）</text>
+    <rect x="56" y="280" width="278" height="42" rx="8" fill="#ffffff" stroke="#993C1D" stroke-width="0.5"/>
+    <text x="195" y="297" font-family="sans-serif" font-size="12" fill="#712B13" text-anchor="middle">ctx.isolate() 请求级隔离域</text>
+    <text x="195" y="313" font-family="sans-serif" font-size="11" fill="#5f6b7a" text-anchor="middle">PG 会话：SET LOCAL dsh.uid / dsh.tenant</text>
+    <rect x="346" y="280" width="278" height="42" rx="8" fill="#ffffff" stroke="#993C1D" stroke-width="0.5"/>
+    <text x="485" y="297" font-family="sans-serif" font-size="12" fill="#712B13" text-anchor="middle">用户服务工厂装配</text>
+    <text x="485" y="313" font-family="sans-serif" font-size="11" fill="#5f6b7a" text-anchor="middle">sessionStore / skillRoot / attachments / 可见集</text>
+
+    <line x1="340" y1="334" x2="340" y2="354" stroke="#0F6E56" stroke-width="1.5" marker-end="url(#m3)"/>
+    <text x="350" y="350" font-family="sans-serif" font-size="11" fill="#0F6E56">ctx.get() 服务契约（对插件透明）</text>
+
+    <!-- L4 核心引擎层 -->
+    <rect x="40" y="354" width="600" height="86" rx="12" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+    <text x="56" y="376" font-family="sans-serif" font-size="13" font-weight="500" fill="#085041">④ 核心引擎层（零改动——只认作用域里的服务契约）</text>
+    <rect x="56" y="386" width="130" height="42" rx="8" fill="#ffffff" stroke="#0F6E56" stroke-width="0.5"/>
+    <text x="121" y="411" font-family="sans-serif" font-size="12" fill="#085041" text-anchor="middle">agent-loop</text>
+    <rect x="198" y="386" width="130" height="42" rx="8" fill="#ffffff" stroke="#0F6E56" stroke-width="0.5"/>
+    <text x="263" y="411" font-family="sans-serif" font-size="12" fill="#085041" text-anchor="middle">tools 工具集</text>
+    <rect x="340" y="386" width="130" height="42" rx="8" fill="#ffffff" stroke="#0F6E56" stroke-width="0.5"/>
+    <text x="405" y="411" font-family="sans-serif" font-size="12" fill="#085041" text-anchor="middle">system-prompt</text>
+    <rect x="482" y="386" width="142" height="42" rx="8" fill="#ffffff" stroke="#0F6E56" stroke-width="0.5"/>
+    <text x="553" y="405" font-family="sans-serif" font-size="12" fill="#085041" text-anchor="middle">sandbox（可插拔）</text>
+    <text x="553" y="420" font-family="sans-serif" font-size="11" fill="#5f6b7a" text-anchor="middle">local → 容器/VM（Phase 2）</text>
+
+    <line x1="340" y1="440" x2="340" y2="460" stroke="#6B3FA0" stroke-width="1.5" marker-end="url(#m3)"/>
+    <text x="350" y="456" font-family="sans-serif" font-size="11" fill="#6B3FA0">读写走用户参数化后的服务实例</text>
+
+    <!-- L5 数据访问层 -->
+    <rect x="40" y="460" width="600" height="100" rx="12" fill="#F3EDFB" stroke="#6B3FA0" stroke-width="0.5"/>
+    <text x="56" y="482" font-family="sans-serif" font-size="13" font-weight="500" fill="#4A2B70">⑤ 数据访问层（改造 + 新增）</text>
+    <rect x="56" y="492" width="184" height="56" rx="8" fill="#ffffff" stroke="#6B3FA0" stroke-width="0.5"/>
+    <text x="148" y="512" font-family="sans-serif" font-size="12" fill="#4A2B70" text-anchor="middle">storage-postgres ★新增</text>
+    <text x="148" y="530" font-family="sans-serif" font-size="11" fill="#5f6b7a" text-anchor="middle">元数据 + RLS + 连接池</text>
+    <rect x="250" y="492" width="184" height="56" rx="8" fill="#ffffff" stroke="#6B3FA0" stroke-width="0.5"/>
+    <text x="342" y="512" font-family="sans-serif" font-size="12" fill="#4A2B70" text-anchor="middle">session-persistence-jsonl</text>
+    <text x="342" y="530" font-family="sans-serif" font-size="11" fill="#5f6b7a" text-anchor="middle">会话正文追加（桶内路径）</text>
+    <rect x="444" y="492" width="180" height="56" rx="8" fill="#ffffff" stroke="#6B3FA0" stroke-width="0.5"/>
+    <text x="534" y="512" font-family="sans-serif" font-size="12" fill="#4A2B70" text-anchor="middle">skill / attachment / spill</text>
+    <text x="534" y="530" font-family="sans-serif" font-size="11" fill="#5f6b7a" text-anchor="middle">根目录模板化到用户桶</text>
+    <rect x="56" y="540" width="278" height="0" fill="none"/>
+    <text x="342" y="552" font-family="sans-serif" font-size="11" fill="#5f6b7a" text-anchor="middle">session-query-postgres ★（tsvector+GIN 全文） · core/memory ★ · session-share ★</text>
+
+    <line x1="340" y1="560" x2="340" y2="580" stroke="#5f6b7a" stroke-width="1.5" marker-end="url(#m3)"/>
+    <text x="350" y="576" font-family="sans-serif" font-size="11" fill="#5f6b7a">元数据 / 索引 ↓ ↓ 大文件资产</text>
+
+    <!-- L6 存储层 -->
+    <rect x="40" y="580" width="292" height="76" rx="12" fill="#F4F4F4" stroke="#8a8f98" stroke-width="0.5"/>
+    <text x="56" y="602" font-family="sans-serif" font-size="13" font-weight="500" fill="#3d4450">PostgreSQL（服务器必选）</text>
+    <text x="56" y="620" font-family="sans-serif" font-size="11" fill="#5f6b7a">mu_ 六表 · RLS 行级安全 · GIN 全文</text>
+    <text x="56" y="636" font-family="sans-serif" font-size="11" fill="#5f6b7a">审计日志 · 定时清理（配额/过期导出物）</text>
+    <rect x="348" y="580" width="292" height="76" rx="12" fill="#F4F4F4" stroke="#8a8f98" stroke-width="0.5"/>
+    <text x="364" y="602" font-family="sans-serif" font-size="13" font-weight="500" fill="#3d4450">DSH_HOME（文件资产桶）</text>
+    <text x="364" y="620" font-family="sans-serif" font-size="11" fill="#5f6b7a">users/&lt;uid&gt;/ sessions·skills·attachments·spill</text>
+    <text x="364" y="636" font-family="sans-serif" font-size="11" fill="#5f6b7a">tenants/ 共享技能与工作区 · global-skills/</text>
+    </svg>
+  </div>
+  <table>
+    <tr><th>层</th><th>归属</th><th>多用户职责</th></tr>
+    <tr><td>① 接入层</td><td>现有 + 宿主</td><td>携带凭据（JWT / API Key）；本地 CLI 是 uid=local 特例</td></tr>
+    <tr><td>② 网关层</td><td><b>新增 host/auth</b></td><td>认证（fail-closed）+ 网关四件套 + 审计——身份的唯一可信来源</td></tr>
+    <tr><td>③ 请求作用域层</td><td><b>新增 host/multiuser-context</b></td><td>isolate + SET LOCAL + 用户服务工厂——隔离发生地</td></tr>
+    <tr><td>④ 核心引擎层</td><td>零改动</td><td>只认 ctx.get() 契约，对「当前是谁」无感知</td></tr>
+    <tr><td>⑤ 数据访问层</td><td>改造 + 3 新包</td><td>所有读写带用户参数（路径前缀 / RLS 上下文 / 可见集）</td></tr>
+    <tr><td>⑥ 存储层</td><td>PG 新增 + 桶重构</td><td>元数据与索引进 PG；大文件留桶（业界规律：大文件不进 OLTP）</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>四、分模块架构图（多用户改造涉及的模块拼装）</h2>
+  <div class="fig">
+    <svg viewBox="0 0 680 470" width="100%" role="img" xmlns="http://www.w3.org/2000/svg">
+    <title>DSH 多用户分模块架构</title>
+    <defs>
+    <marker id="m4" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    </defs>
+    <text x="40" y="22" font-family="sans-serif" font-size="15" font-weight="500" fill="#1f2329">模块拼装：auth 出身份 → multiuser-context 装配 → 五个业务域消费 currentUser</text>
+
+    <!-- host/auth -->
+    <rect x="40" y="40" width="600" height="62" rx="12" fill="#FFF8E6" stroke="#BA7517" stroke-width="0.5"/>
+    <text x="56" y="62" font-family="sans-serif" font-size="13" font-weight="500" fill="#854F0B">host/auth（新插件）</text>
+    <text x="56" y="82" font-family="sans-serif" font-size="12" fill="#5f6b7a">输入：JWT / API Key / OIDC / 一次性链接　→　输出：currentUser { userId, tenantId, scopes } + 网关四件套</text>
+
+    <line x1="340" y1="102" x2="340" y2="124" stroke="#712B13" stroke-width="1.5" marker-end="url(#m4)"/>
+    <text x="350" y="118" font-family="sans-serif" font-size="11" fill="#712B13">currentUser（请求作用域内只读）</text>
+
+    <!-- multiuser-context -->
+    <rect x="40" y="124" width="600" height="62" rx="12" fill="#FAECE7" stroke="#993C1D" stroke-width="0.5"/>
+    <text x="56" y="146" font-family="sans-serif" font-size="13" font-weight="500" fill="#712B13">host/multiuser-context（新插件，装配中枢）</text>
+    <text x="56" y="166" font-family="sans-serif" font-size="12" fill="#5f6b7a">ctx.isolate() 出请求域 → 按用户实例化下列五个域的服务 → provide 进隔离域（PG 连接同时 SET LOCAL dsh.uid/tenant）</text>
+
+    <line x1="104" y1="186" x2="104" y2="210" stroke="#0F6E56" stroke-width="1.2" marker-end="url(#m4)"/>
+    <line x1="236" y1="186" x2="236" y2="210" stroke="#185FA5" stroke-width="1.2" marker-end="url(#m4)"/>
+    <line x1="368" y1="186" x2="368" y2="210" stroke="#BA7517" stroke-width="1.2" marker-end="url(#m4)"/>
+    <line x1="500" y1="186" x2="500" y2="210" stroke="#6B3FA0" stroke-width="1.2" marker-end="url(#m4)"/>
+    <line x1="608" y1="186" x2="608" y2="210" stroke="#5f6b7a" stroke-width="1.2" marker-end="url(#m4)"/>
+
+    <!-- 五个域 -->
+    <rect x="44" y="210" width="120" height="168" rx="10" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+    <text x="104" y="232" font-family="sans-serif" font-size="13" font-weight="500" fill="#085041" text-anchor="middle">会话域</text>
+    <text x="56" y="254" font-family="sans-serif" font-size="11" fill="#0F6E56">session-persistence</text>
+    <text x="56" y="270" font-family="sans-serif" font-size="11" fill="#0F6E56">-jsonl（改：桶路径）</text>
+    <text x="56" y="286" font-family="sans-serif" font-size="11" fill="#0F6E56">session-query 家族（改）</text>
+    <text x="56" y="302" font-family="sans-serif" font-size="11" fill="#0F6E56">query-postgres ★新增</text>
+    <text x="56" y="318" font-family="sans-serif" font-size="11" fill="#0F6E56">session-share ★新增</text>
+    <text x="56" y="334" font-family="sans-serif" font-size="11" fill="#0F6E56">log-export（改）</text>
+    <text x="56" y="356" font-family="sans-serif" font-size="10" fill="#5f6b7a">契约：读 currentUser</text>
+    <text x="56" y="369" font-family="sans-serif" font-size="10" fill="#5f6b7a">算可见集</text>
+
+    <rect x="176" y="210" width="120" height="168" rx="10" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="236" y="232" font-family="sans-serif" font-size="13" font-weight="500" fill="#0C447C" text-anchor="middle">技能域</text>
+    <text x="188" y="254" font-family="sans-serif" font-size="11" fill="#185FA5">skill-filesystem（改：</text>
+    <text x="188" y="270" font-family="sans-serif" font-size="11" fill="#185FA5">rank 路径模板化）</text>
+    <text x="188" y="286" font-family="sans-serif" font-size="11" fill="#185FA5">rank 100~600 六层</text>
+    <text x="188" y="302" font-family="sans-serif" font-size="11" fill="#185FA5">150 租户共享层 ★</text>
+    <text x="188" y="318" font-family="sans-serif" font-size="11" fill="#185FA5">400 用户层（改）</text>
+    <text x="188" y="334" font-family="sans-serif" font-size="11" fill="#185FA5">tool-skill（零改动）</text>
+    <text x="188" y="356" font-family="sans-serif" font-size="10" fill="#5f6b7a">契约：skillsRoot 列表</text>
+    <text x="188" y="369" font-family="sans-serif" font-size="10" fill="#5f6b7a">按请求注入</text>
+
+    <rect x="308" y="210" width="120" height="168" rx="10" fill="#FFF8E6" stroke="#BA7517" stroke-width="0.5"/>
+    <text x="368" y="232" font-family="sans-serif" font-size="13" font-weight="500" fill="#854F0B" text-anchor="middle">资产域</text>
+    <text x="320" y="254" font-family="sans-serif" font-size="11" fill="#854F0B">attachment-local（改：</text>
+    <text x="320" y="270" font-family="sans-serif" font-size="11" fill="#854F0B">根目录注入用户桶）</text>
+    <text x="320" y="286" font-family="sans-serif" font-size="11" fill="#854F0B">spill-local（改）</text>
+    <text x="320" y="302" font-family="sans-serif" font-size="11" fill="#854F0B">artifacts 归属域 ★</text>
+    <text x="320" y="318" font-family="sans-serif" font-size="11" fill="#854F0B">配额守卫 ★</text>
+    <text x="320" y="334" font-family="sans-serif" font-size="11" fill="#854F0B">（租户/用户两级）</text>
+    <text x="320" y="356" font-family="sans-serif" font-size="10" fill="#5f6b7a">契约：根路径 + 配额</text>
+    <text x="320" y="369" font-family="sans-serif" font-size="10" fill="#5f6b7a">超限即拒绝</text>
+
+    <rect x="440" y="210" width="120" height="168" rx="10" fill="#F3EDFB" stroke="#6B3FA0" stroke-width="0.5"/>
+    <text x="500" y="232" font-family="sans-serif" font-size="13" font-weight="500" fill="#4A2B70" text-anchor="middle">记忆域</text>
+    <text x="452" y="254" font-family="sans-serif" font-size="11" fill="#6B3FA0">core/memory ★新增</text>
+    <text x="452" y="270" font-family="sans-serif" font-size="11" fill="#6B3FA0">（L3 用户 / L4 租户）</text>
+    <text x="452" y="286" font-family="sans-serif" font-size="11" fill="#6B3FA0">memory-prompt-sec</text>
+    <text x="452" y="302" font-family="sans-serif" font-size="11" fill="#6B3FA0">tion ★新增（注入）</text>
+    <text x="452" y="318" font-family="sans-serif" font-size="11" fill="#6B3FA0">compaction（零改动，</text>
+    <text x="452" y="334" font-family="sans-serif" font-size="11" fill="#6B3FA0">L1/L2 现状保留）</text>
+    <text x="452" y="356" font-family="sans-serif" font-size="10" fill="#5f6b7a">契约：KV 域 + prompt</text>
+    <text x="452" y="369" font-family="sans-serif" font-size="10" fill="#5f6b7a">分段注册</text>
+
+    <rect x="556" y="210" width="84" height="168" rx="10" fill="#F4F4F4" stroke="#8a8f98" stroke-width="0.5"/>
+    <text x="598" y="232" font-family="sans-serif" font-size="13" font-weight="500" fill="#3d4450" text-anchor="middle">工作区域</text>
+    <text x="566" y="254" font-family="sans-serif" font-size="11" fill="#5f6b7a">workspace（改：</text>
+    <text x="566" y="270" font-family="sans-serif" font-size="11" fill="#5f6b7a">注册表带 owner）</text>
+    <text x="566" y="286" font-family="sans-serif" font-size="11" fill="#5f6b7a">workspace_</text>
+    <text x="566" y="302" font-family="sans-serif" font-size="11" fill="#5f6b7a">member ★新增</text>
+    <text x="566" y="318" font-family="sans-serif" font-size="11" fill="#5f6b7a">（reader/writer）</text>
+    <text x="566" y="340" font-family="sans-serif" font-size="10" fill="#5f6b7a">契约：按用户</text>
+    <text x="566" y="353" font-family="sans-serif" font-size="10" fill="#5f6b7a">过滤的项目</text>
+    <text x="566" y="366" font-family="sans-serif" font-size="10" fill="#5f6b7a">列表</text>
+
+    <!-- 底部公共底座 -->
+    <rect x="44" y="398" width="596" height="56" rx="10" fill="#F4F4F4" stroke="#8a8f98" stroke-width="0.5"/>
+    <text x="342" y="420" font-family="sans-serif" font-size="12" font-weight="500" fill="#3d4450" text-anchor="middle">storage-postgres ★（公共底座）：六表 + RLS——五个域的元数据全走它</text>
+    <text x="342" y="440" font-family="sans-serif" font-size="11" fill="#5f6b7a" text-anchor="middle">文件资产（jsonl/附件/spill/技能包）走 DSH_HOME 用户桶，库里只存引用与配额；本地 CLI 回落 jsonl+sqlite</text>
+    </svg>
+  </div>
+  <div class="tip"><b>模块间唯一耦合点是 currentUser：</b>五个域互不感知，都只从请求作用域拿身份再参数化自己的服务——这正是 Cordis isolate 设计带来的好处：新增一个域不需要动其他域。</div>
+</section>
+
+<section>
+  <h2>五、调用链路（请求时序）</h2>
+  <div class="fig">
+    <svg viewBox="0 0 680 640" width="100%" role="img" xmlns="http://www.w3.org/2000/svg">
+    <title>DSH 多用户典型请求调用链路</title>
+    <defs>
+    <marker id="m5" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    </defs>
+    <text x="40" y="22" font-family="sans-serif" font-size="15" font-weight="500" fill="#1f2329">主链路：用户 A 发一条消息（发消息执行链路）</text>
+
+    <!-- 泳道头 -->
+    <rect x="20" y="38" width="140" height="34" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="90" y="60" font-family="sans-serif" font-size="13" font-weight="500" fill="#0C447C" text-anchor="middle">客户端</text>
+    <rect x="180" y="38" width="160" height="34" rx="8" fill="#FFF8E6" stroke="#BA7517" stroke-width="0.5"/>
+    <text x="260" y="60" font-family="sans-serif" font-size="13" font-weight="500" fill="#854F0B" text-anchor="middle">网关+作用域</text>
+    <rect x="360" y="38" width="150" height="34" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+    <text x="435" y="60" font-family="sans-serif" font-size="13" font-weight="500" fill="#085041" text-anchor="middle">核心引擎</text>
+    <rect x="530" y="38" width="130" height="34" rx="8" fill="#F3EDFB" stroke="#6B3FA0" stroke-width="0.5"/>
+    <text x="595" y="60" font-family="sans-serif" font-size="13" font-weight="500" fill="#4A2B70" text-anchor="middle">数据层</text>
+
+    <!-- 生命线 -->
+    <line x1="90" y1="72" x2="90" y2="600" stroke="#c9d4e4" stroke-width="1" stroke-dasharray="4 4"/>
+    <line x1="260" y1="72" x2="260" y2="600" stroke="#e8d9b0" stroke-width="1" stroke-dasharray="4 4"/>
+    <line x1="435" y1="72" x2="435" y2="600" stroke="#bfe0d4" stroke-width="1" stroke-dasharray="4 4"/>
+    <line x1="595" y1="72" x2="595" y2="600" stroke="#d8cbe8" stroke-width="1" stroke-dasharray="4 4"/>
+
+    <!-- 消息 -->
+    <line x1="90" y1="100" x2="260" y2="100" stroke="#185FA5" stroke-width="1.5" marker-end="url(#m5)"/>
+    <text x="175" y="94" font-family="sans-serif" font-size="11" fill="#0C447C" text-anchor="middle">① POST /chat（Bearer JWT）</text>
+
+    <rect x="180" y="118" width="160" height="40" rx="8" fill="#FFF8E6" stroke="#BA7517" stroke-width="0.5"/>
+    <text x="260" y="134" font-family="sans-serif" font-size="11" fill="#854F0B" text-anchor="middle">② 验签 fail-closed（无效→401）</text>
+    <text x="260" y="150" font-family="sans-serif" font-size="11" fill="#854F0B" text-anchor="middle">③ isolate + SET LOCAL dsh.uid</text>
+
+    <line x1="260" y1="180" x2="435" y2="180" stroke="#993C1D" stroke-width="1.5" marker-end="url(#m5)"/>
+    <text x="348" y="174" font-family="sans-serif" font-size="11" fill="#712B13" text-anchor="middle">④ 装配用户作用域服务（桶路径/可见集/技能根）</text>
+
+    <rect x="360" y="198" width="150" height="56" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+    <text x="435" y="216" font-family="sans-serif" font-size="11" fill="#085041" text-anchor="middle">⑤ LLM 调用（按用户凭证</text>
+    <text x="435" y="230" font-family="sans-serif" font-size="11" fill="#085041" text-anchor="middle">解密，仅请求生命周期）</text>
+    <text x="435" y="244" font-family="sans-serif" font-size="11" fill="#085041" text-anchor="middle">⑥ 工具执行（sandbox 校验</text>
+    <text x="435" y="256" font-family="sans-serif" font-size="11" fill="#085041" text-anchor="middle">cwd 归属，防路径逃逸）</text>
+
+    <line x1="435" y1="278" x2="595" y2="278" stroke="#6B3FA0" stroke-width="1.5" marker-end="url(#m5)"/>
+    <text x="515" y="272" font-family="sans-serif" font-size="11" fill="#4A2B70" text-anchor="middle">⑦ jsonl 追加（users/&lt;uid&gt;/sessions/…）</text>
+
+    <line x1="435" y1="312" x2="595" y2="312" stroke="#6B3FA0" stroke-width="1.5" marker-end="url(#m5)"/>
+    <text x="515" y="306" font-family="sans-serif" font-size="11" fill="#4A2B70" text-anchor="middle">⑧ session_meta upsert（RLS 兜底过滤）</text>
+
+    <line x1="435" y1="346" x2="90" y2="346" stroke="#0F6E56" stroke-width="1.5" marker-end="url(#m5)"/>
+    <text x="262" y="340" font-family="sans-serif" font-size="11" fill="#085041" text-anchor="middle">⑨ 流式响应（SSE）</text>
+
+    <rect x="180" y="364" width="160" height="40" rx="8" fill="#FFF8E6" stroke="#BA7517" stroke-width="0.5"/>
+    <text x="260" y="380" font-family="sans-serif" font-size="11" fill="#854F0B" text-anchor="middle">⑩ 审计日志（tenantId,userId,</text>
+    <text x="260" y="394" font-family="sans-serif" font-size="11" fill="#854F0B" text-anchor="middle">sessionId,traceId）→ PG</text>
+
+    <text x="40" y="436" font-family="sans-serif" font-size="15" font-weight="500" fill="#1f2329">次链路：历史会话检索（只读，走同一套护栏）</text>
+
+    <line x1="90" y1="460" x2="260" y2="460" stroke="#185FA5" stroke-width="1.5" marker-end="url(#m5)"/>
+    <text x="175" y="454" font-family="sans-serif" font-size="11" fill="#0C447C" text-anchor="middle">⑪ 搜索"上周的会话"</text>
+
+    <line x1="260" y1="494" x2="435" y2="494" stroke="#993C1D" stroke-width="1.5" marker-end="url(#m5)"/>
+    <text x="348" y="488" font-family="sans-serif" font-size="11" fill="#712B13" text-anchor="middle">⑫ 同④（作用域与可见集装配）</text>
+
+    <line x1="435" y1="528" x2="595" y2="528" stroke="#6B3FA0" stroke-width="1.5" marker-end="url(#m5)"/>
+    <text x="515" y="522" font-family="sans-serif" font-size="11" fill="#4A2B70" text-anchor="middle">⑬ tsvector+GIN 全文（RLS 过滤）</text>
+
+    <line x1="595" y1="562" x2="90" y2="562" stroke="#0F6E56" stroke-width="1.5" marker-end="url(#m5)"/>
+    <text x="342" y="556" font-family="sans-serif" font-size="11" fill="#085041" text-anchor="middle">⑭ 命中结果（仅自己 + 授权共享，他人会话被 RLS 滤为 0 行）</text>
+
+    <rect x="20" y="580" width="640" height="48" rx="8" fill="#F4F4F4" stroke="#8a8f98" stroke-width="0.5"/>
+    <text x="340" y="600" font-family="sans-serif" font-size="12" fill="#3d4450" text-anchor="middle">两条链路共用同一护栏：② 的 fail-closed 认证 + ⑫ 的可见集装配 + RLS 数据库兜底——三层防线任何一层漏了，下一层仍拦得住</text>
+    <text x="340" y="618" font-family="sans-serif" font-size="11" fill="#5f6b7a" text-anchor="middle">连接池归还时 SET LOCAL 随事务结束自动失效（第⑩步之后），不会串号</text>
+    </svg>
+  </div>
+</section>
+
+<section>
+  <h2>六、租户模型：三层实体 + Cordis 作用域映射</h2>
+  <div class="fig">
+    <svg viewBox="0 0 680 500" width="100%" role="img" xmlns="http://www.w3.org/2000/svg">
+    <title>多租户目标架构</title>
+    <defs>
+    <marker id="m1" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    </defs>
+    <text x="40" y="24" font-family="sans-serif" font-size="15" font-weight="500" fill="#1f2329">目标模型：Tenant → User → Workspace → Session 四级归属</text>
+    <rect x="40" y="42" width="600" height="64" rx="12" fill="#F3EDFB" stroke="#6B3FA0" stroke-width="0.5"/>
+    <text x="60" y="64" font-family="sans-serif" font-size="14" font-weight="500" fill="#4A2B70">租户 Tenant（新增）—— 医院科室 / 团队</text>
+    <text x="60" y="86" font-family="sans-serif" font-size="12" fill="#6B3FA0">全局技能 · 共享工作区 · 记忆库 · 配额 · 审计策略</text>
+    <line x1="210" y1="106" x2="210" y2="130" stroke="#993C1D" stroke-width="1.5" marker-end="url(#m1)"/>
+    <text x="218" y="122" font-family="sans-serif" font-size="12" fill="#993C1D">1:N</text>
+    <rect x="40" y="130" width="340" height="64" rx="12" fill="#FAECE7" stroke="#993C1D" stroke-width="0.5"/>
+    <text x="60" y="152" font-family="sans-serif" font-size="14" font-weight="500" fill="#712B13">用户 User（新增实体，认证后存在）</text>
+    <text x="60" y="174" font-family="sans-serif" font-size="12" fill="#993C1D">私有会话 · 私有技能 · 私有资产 · 私有记忆 · API 凭证</text>
+    <line x1="210" y1="194" x2="210" y2="218" stroke="#0F6E56" stroke-width="1.5" marker-end="url(#m1)"/>
+    <text x="218" y="210" font-family="sans-serif" font-size="12" fill="#0F6E56">1:N（自己的）</text>
+    <rect x="40" y="218" width="340" height="60" rx="12" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+    <text x="210" y="239" font-family="sans-serif" font-size="14" font-weight="500" fill="#085041" text-anchor="middle" dominant-baseline="central">工作区 Workspace（加 ownerUserId / tenantId）</text>
+    <text x="210" y="259" font-family="sans-serif" font-size="12" fill="#0F6E56" text-anchor="middle" dominant-baseline="central">私有工作区 ∪ 租户共享工作区（成员表）</text>
+    <line x1="210" y1="278" x2="210" y2="302" stroke="#0F6E56" stroke-width="1.5" marker-end="url(#m1)"/>
+    <text x="218" y="294" font-family="sans-serif" font-size="12" fill="#0F6E56">1:N</text>
+    <rect x="40" y="302" width="340" height="56" rx="12" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+    <text x="210" y="323" font-family="sans-serif" font-size="14" font-weight="500" fill="#085041" text-anchor="middle" dominant-baseline="central">会话 Session（加 userId + workspaceId 归属）</text>
+    <text x="210" y="343" font-family="sans-serif" font-size="12" fill="#0F6E56" text-anchor="middle" dominant-baseline="central">SessionEvent 日志 + SessionHeader(lineage) 不变</text>
+    <g><rect x="410" y="130" width="230" height="56" rx="10" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="525" y="151" font-family="sans-serif" font-size="13" font-weight="500" fill="#0C447C" text-anchor="middle" dominant-baseline="central">会话共享 Share（新增）</text>
+    <text x="525" y="171" font-family="sans-serif" font-size="12" fill="#185FA5" text-anchor="middle" dominant-baseline="central">只读链接 / fork / 团队协作</text></g>
+    <g><rect x="410" y="218" width="230" height="56" rx="10" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="525" y="239" font-family="sans-serif" font-size="13" font-weight="500" fill="#0C447C" text-anchor="middle" dominant-baseline="central">记忆 Memory（新增域）</text>
+    <text x="525" y="259" font-family="sans-serif" font-size="12" fill="#185FA5" text-anchor="middle" dominant-baseline="central">会话内 / 工作区 / 用户 / 租户 四层</text></g>
+    <g><rect x="410" y="302" width="230" height="56" rx="10" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="525" y="323" font-family="sans-serif" font-size="13" font-weight="500" fill="#0C447C" text-anchor="middle" dominant-baseline="central">资产 Artifacts（新增归属）</text>
+    <text x="525" y="343" font-family="sans-serif" font-size="12" fill="#185FA5" text-anchor="middle" dominant-baseline="central">附件 / spill / 导出 ZIP / 生成文件</text></g>
+    <rect x="40" y="392" width="600" height="84" rx="12" fill="#FFF8E6" stroke="#BA7517" stroke-width="0.5"/>
+    <text x="60" y="414" font-family="sans-serif" font-size="13" font-weight="500" fill="#854F0B">Cordis 映射：每个请求 → apiproxy 认证解析 userId → ctx.isolate() 出请求作用域 →</text>
+    <text x="60" y="436" font-family="sans-serif" font-size="13" fill="#854F0B">在隔离域内 provide 当前用户的服务实例（sessionStore / skillsRoot / storageDomain / memory），</text>
+    <text x="60" y="458" font-family="sans-serif" font-size="13" fill="#854F0B">插件代码继续 ctx.get('xxx') 拿服务——对现有插件透明，隔离发生在作用域装配层</text>
+    </svg>
+  </div>
+  <h3>关键机制：请求级用户上下文怎么注入</h3>
+  <p>dsh 所有客户端调用都过 <code class="inline">apiproxy</code>（webserver:3080）。改造方式：</p>
+  <ol>
+    <li>在 apiproxy 前加<b>强制认证中间件（fail-closed：解析不出身份 = 直接 401，绝无匿名兜底）</b>，解析出 <code class="inline">userId / tenantId</code>；</li>
+    <li>每个请求创建 <code class="inline">ctx.isolate()</code> 隔离域，把用户相关的服务实例（见下表）以用户参数实例化后 <code class="inline">ctx.provide</code> 进隔离域；</li>
+    <li>插件树其余部分（agent-loop、tools、llm）不变——它们只认 <code class="inline">ctx.get()</code> 的服务契约。</li>
+  </ol>
+
+  <h3>接入渠道 × 授权方式矩阵（认证不止登录一条路）</h3>
+  <table>
+    <tr><th>渠道</th><th>授权方式</th><th>身份解析</th><th>典型场景</th></tr>
+    <tr><td>Web UI</td><td>OIDC / SSO（对接医院 4A、企业 IdP）</td><td>Bearer Token → OIDC userinfo → userId</td><td>医生站浏览器使用 DSH 面板</td></tr>
+    <tr><td>宿主嵌入（uai-widget / AIMS）</td><td>宿主服务端换发的短期用户 Token（JWT，带 uid/tid 声明）</td><td>面板 iframe 请求携带 Token 打 apiproxy</td><td>AIMS 医生工作站内嵌智能体</td></tr>
+    <tr><td>服务端 API（机器渠道）</td><td>API Key（作用域绑定用户/租户 + 路径白名单）</td><td>Key 哈希查 app_user.auth_ref</td><td>第三方系统定时调用、批处理</td></tr>
+    <tr><td>一次性授权链接</td><td>带 scope + 有效期的邀请 Token（share 表 grantee_type=link）</td><td>Token → 限定只读/fork 权限的受限身份</td><td>专家远程会诊查看会话记录</td></tr>
+    <tr><td>本地 CLI（特例）</td><td>免认证，uid 固定 = local</td><td>兼容模式，桶结构退化为现状</td><td>单机开发者用法不变</td></tr>
+  </table>
+  <div class="warn"><b>Token 与会话的关系（采纳 LangGraph 教训）：</b>身份永远从认证层解析，session uuid 由服务端登记进 session_meta；<b>严禁</b>客户端自报「我要操作 session-xxx」就直查——必须先经 session_meta 校验归属/可见性。审计日志记录 (tenantId, userId, sessionId, traceId) 四元组（对齐 Dify 审计粒度）。</div>
+  <table>
+    <tr><th>服务（ctx 键）</th><th>现状</th><th>改造后（每请求实例化）</th></tr>
+    <tr><td><code class="inline">sessionPersistence</code></td><td>全局单例后端</td><td>工厂模式：<code class="inline">createForUser(uid)</code>，路径/查询自动带用户前缀</td></tr>
+    <tr><td><code class="inline">skills</code>（provider roots）</td><td>固定 5 级 root</td><td>rank 400 root 指向 <code class="inline">/users/&lt;uid&gt;/skills</code>，rank 150 加租户共享 root</td></tr>
+    <tr><td><code class="inline">storageDomain</code></td><td>全局 KV 域</td><td>域实例按 uid 分片（一库多行加 owner 列，或每用户一库）</td></tr>
+    <tr><td><code class="inline">attachments</code> / <code class="inline">spillStore</code></td><td>DSH_HOME 单桶</td><td>backend 实例注入用户根目录</td></tr>
+    <tr><td><code class="inline">sessionQuery</code></td><td>全局检索</td><td>查询入口强制追加 <code class="inline">userId</code> 过滤（越权防线）</td></tr>
+  </table>
+  <div class="warn"><b>注意 HMR 与 patch 的全局性：</b><code class="inline">cordis.patch.yml</code> 是进程级配置，用户级配置差异不要走 patch 层，走 storage-domain 的 user_settings 域读取。</div>
+</section>
+
+<section>
+  <h2>七、DSH_HOME 目录重构（资产与一切落盘的物理基础）</h2>
+  <pre><code># 现状（单机单用户）
+$DSH_HOME/                          # 默认 ~/.dsh
+├── .credentials.yaml               # 全局唯一凭证（明文）
+├── settings.yaml                   # 全局设置
+├── profiles/                       # 插件组合 + node_modules
+├── sessions/&lt;工作区转义&gt;/session-&lt;uuid&gt;/session.jsonl.zstd
+├── storages/                       # workspace.json / session_projcache.json
+├── attachments/                    # 图片附件（attachment-local）
+└── spill/                          # 超限工具输出（spill-local，会话私有）
+
+# 改造后（Phase 1：单进程多租户）
+$DSH_HOME/
+├── tenants/&lt;tenantId&gt;/
+│   ├── shared-skills/              # 租户级共享技能（rank 150）
+│   ├── shared-workspaces/          # 租户共享工作区（成员可写）
+│   ├── plugins/                    # 租户级插件（管理员审批安装，见十）
+│   └── memory/                     # 租户级记忆库
+├── users/&lt;uid&gt;/                    # ★ 一级用户桶：一切私有物的根
+│   ├── skills/                     # 用户技能（rank 400）
+│   ├── sessions/&lt;工作区转义&gt;/session-&lt;uuid&gt;/   # 会话日志
+│   ├── attachments/                # 图片附件
+│   ├── spill/                      # 溢出产物
+│   ├── artifacts/                  # 导出 ZIP、生成物登记（新增）
+│   ├── memory/                     # 用户级记忆（跨会话）
+│   ├── profile/                    # 用户插件组装（node_modules + cordis.patch.yml，见十）
+│   ├── settings.yaml               # ★ 插件设置用户层（settings-file 文档，见十）
+│   ├── settings.json               # storage-domain: user_settings 域
+│   └── credentials.enc             # ★ 每用户独立 API 凭证（加密存）
+├── system-plugins/                 # 系统级插件（管理员安装，全租户可见，见十）
+├── global-skills/                  # 平台级技能（rank 500，原 ~/.dsh/skills 语义）
+└── (仅本地 CLI 才有 db/ 元数据 SQLite；服务器模式元数据全量在 PostgreSQL，见第四节与第九节)</code></pre>
+  <table>
+    <tr><th>约束</th><th>说明</th></tr>
+    <tr><td>兼容模式</td><td>未登录（本地 CLI 模式）时 <code class="inline">uid = local</code>，目录结构退化为现状的别名，单机体验零变化</td></tr>
+    <tr><td>迁移工具</td><td>提供 <code class="inline">dsh migrate multiuser</code>：把现状 <code class="inline">sessions/ storages/ attachments/</code> 整体挪入 <code class="inline">users/local/</code></td></tr>
+    <tr><td>工作区转义路径</td><td>会话目录仍按工作区路径转义分层（<code class="inline">--V-xx--</code> 规则不变），只是外面包了一层 <code class="inline">users/&lt;uid&gt;</code></td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>八、会话隔离与共享</h2>
+  <h3>8.1 隔离（先隔离，才谈共享）</h3>
+  <table>
+    <tr><th>层</th><th>隔离手段</th><th>实现位置</th></tr>
+    <tr><td>认证</td><td>apiproxy 中间件校验 Token → userId；所有 RPC 携带请求作用域</td><td><code class="inline">host/apiproxy</code> 前置插件</td></tr>
+    <tr><td>存储行级</td><td>会话正文 jsonl 后端：路径加 <code class="inline">users/&lt;uid&gt;/</code> 前缀；<b>服务器模式：会话索引与元数据入 PostgreSQL（新增 <code class="inline">storage-postgres</code> 后端，元数据表见第十四节，带 user_id 列 + RLS）</b>；本地 CLI 保留 sqlite 后端加 user_id 列</td><td><code class="inline">session-persistence-jsonl / -sqlite</code> + <b>新增 -postgres</b></td></tr>
+    <tr><td>投影与缓存</td><td><code class="inline">session_projcache</code> 从 storage-json 全局单文件 → storage-domain 按 owner 分行</td><td><code class="inline">session-projection-cache</code></td></tr>
+    <tr><td>检索</td><td><code class="inline">sessionQuery</code> 入口处统一注入 <code class="inline">userId ∈ {自己, 授权共享}</code> 的可见集合；<b>服务器模式：PostgreSQL 全文检索（tsvector + GIN 索引，单库 + 行过滤，无分库问题）</b>；本地 CLI 保留 SQLite FTS5</td><td><code class="inline">session-query</code> + <b>新增 query-postgres</b></td></tr>
+    <tr><td><b>数据库兜底</b><br>（对标 LangGraph RLS）</td><td><b>服务器模式（主形态）：PostgreSQL 原生 RLS</b>——每请求 <code class="inline">SET LOCAL dsh.uid / dsh.tenant</code>，元数据表挂 <code class="inline">CREATE POLICY ... USING</code> 行级策略，应用层漏拼 WHERE 也拦得住（策略见第九节）；本地 CLI 的 SQLite 后端才用 <code class="inline">sqlite3_set_authorizer()</code> 回调模拟</td><td><code class="inline">storage-postgres</code> 连接工厂</td></tr>
+    <tr><td>沙箱</td><td>工作区目录本身在用户桶内或共享区，sandbox-local / landlock 的根目录参数随请求作用域传入；<b>防止用户 A 的会话 cwd 指向用户 B 的桶</b>（启动时校验路径归属）</td><td><code class="inline">sandbox/*</code> + apiproxy</td></tr>
+  </table>
+  <h3>8.2 共享（三种模式，风险递增）</h3>
+  <div class="fig">
+    <svg viewBox="0 0 680 300" width="100%" role="img" xmlns="http://www.w3.org/2000/svg">
+    <title>会话共享三模式</title>
+    <defs>
+    <marker id="m2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    </defs>
+    <text x="40" y="24" font-family="sans-serif" font-size="15" font-weight="500" fill="#1f2329">会话共享三模式：导出 / 只读分享 / Fork 接续</text>
+    <g><rect x="40" y="48" width="190" height="110" rx="10" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="135" y="72" font-family="sans-serif" font-size="14" font-weight="500" fill="#0C447C" text-anchor="middle">① 导出 Export</text>
+    <text x="135" y="96" font-family="sans-serif" font-size="12" fill="#185FA5" text-anchor="middle">复用现有 session-log-export</text>
+    <text x="135" y="116" font-family="sans-serif" font-size="12" fill="#185FA5" text-anchor="middle">下载 ZIP（快照、离线、不可回写）</text>
+    <text x="135" y="140" font-family="sans-serif" font-size="12" font-weight="500" fill="#1d9e75" text-anchor="middle">难度：★ 已有能力</text></g>
+    <g><rect x="245" y="48" width="190" height="110" rx="10" fill="#FFF8E6" stroke="#BA7517" stroke-width="0.5"/>
+    <text x="340" y="72" font-family="sans-serif" font-size="14" font-weight="500" fill="#854F0B" text-anchor="middle">② 只读分享 Share</text>
+    <text x="340" y="96" font-family="sans-serif" font-size="12" fill="#854F0B" text-anchor="middle">新增 share 表：会话 → 授权人列表</text>
+    <text x="340" y="116" font-family="sans-serif" font-size="12" fill="#854F0B" text-anchor="middle">被分享者在 sessionQuery 可见集中</text>
+    <text x="340" y="140" font-family="sans-serif" font-size="12" font-weight="500" fill="#BA7517" text-anchor="middle">难度：★★ 新表+过滤器</text></g>
+    <g><rect x="450" y="48" width="190" height="110" rx="10" fill="#FAECE7" stroke="#993C1D" stroke-width="0.5"/>
+    <text x="545" y="72" font-family="sans-serif" font-size="14" font-weight="500" fill="#712B13" text-anchor="middle">③ Fork 接续</text>
+    <text x="545" y="96" font-family="sans-serif" font-size="12" fill="#993C1D" text-anchor="middle">以他人会话日志为 seed 的新会话</text>
+    <text x="545" y="116" font-family="sans-serif" font-size="12" fill="#993C1D" text-anchor="middle">SessionHeader.lineage 记血缘</text>
+    <text x="545" y="140" font-family="sans-serif" font-size="12" font-weight="500" fill="#993C1D" text-anchor="middle">难度：★★★ seed+凭证隔离</text></g>
+    <line x1="340" y1="158" x2="340" y2="190" stroke="#993C1D" stroke-width="1.5" marker-end="url(#m2)"/>
+    <rect x="40" y="196" width="600" height="80" rx="12" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+    <text x="60" y="220" font-family="sans-serif" font-size="13" font-weight="500" fill="#085041">Fork 的天然优势：dsh 的 SessionHeader 本身带 lineage（血缘）与 seed boundary（种子边界）字段，</text>
+    <text x="60" y="242" font-family="sans-serif" font-size="13" fill="#0F6E56">resume 语义就是「读旧日志 → 开新会话」。Fork = 对被分享会话执行 resume，但运行在 fork 者的</text>
+    <text x="60" y="264" font-family="sans-serif" font-size="13" fill="#0F6E56">用户桶里、用 fork 者的凭证与技能——原会话日志零污染，血缘链可追溯「改编自谁」。</text>
+    </svg>
+  </div>
+  <h3>8.3 共享权限矩阵</h3>
+  <table>
+    <tr><th>操作</th><th>owner</th><th>共享成员（read）</th><th>共享成员（fork）</th><th>租户管理员</th><th>无关用户</th></tr>
+    <tr><td>读会话日志 / 检索命中</td><td>✔</td><td>✔</td><td>✔</td><td>✔（审计）</td><td>✘（FTS 过滤掉）</td></tr>
+    <tr><td>继续对话（resume 写入）</td><td>✔</td><td>✘</td><td>✔（写自己的 fork 副本）</td><td>✘</td><td>✘</td></tr>
+    <tr><td>导出 ZIP</td><td>✔</td><td>✔（可由 owner 禁止）</td><td>✔</td><td>✔</td><td>✘</td></tr>
+    <tr><td>删除 / 转移归属</td><td>✔</td><td>✘</td><td>✘</td><td>✔（合规场景）</td><td>✘</td></tr>
+    <tr><td>查看附件 / spill 产物</td><td>✔</td><td>随会话只读</td><td>复制为自己的资产</td><td>✔</td><td>✘</td></tr>
+  </table>
+  <div class="tip"><b>团队共享工作区（进阶）：</b>工作区实体加成员表后，「共享工作区里的会话」对成员默认 read、owner 写——检索可见集合并入 workspace 成员关系即可，机制与上表同构。</div>
+</section>
+
+<section>
+  <h2>九、用户技能（改造性价比最高的一块）</h2>
+  <p><code class="inline">dsh-skill</code> 注册表的设计本意就是「任意来源、按 rank 合并、同名 first-wins」。多用户技能<b>不需要新引擎</b>，只需要把「目录来源」参数化到请求作用域：</p>
+  <h3>9.1 改造后的技能来源层级（rank 越小优先级越高）</h3>
+  <table>
+    <tr><th>rank</th><th>来源</th><th>路径</th><th>多用户语义</th></tr>
+    <tr><td>100</td><td>project-dsh</td><td><code class="inline">&lt;projectRoot&gt;/.dsh/skills</code></td><td>不变：项目随代码走，天然共享</td></tr>
+    <tr><td>150 <b>（新增）</b></td><td>tenant-shared</td><td><code class="inline">$DSH_HOME/tenants/&lt;tid&gt;/shared-skills</code></td><td>租户管理员维护的团队技能库</td></tr>
+    <tr><td>200</td><td>project-agents</td><td><code class="inline">&lt;projectRoot&gt;/.agents/skills</code></td><td>不变</td></tr>
+    <tr><td>300</td><td>custom</td><td><code class="inline">customSkillDirs</code></td><td>改为请求作用域注入（用户自选目录）</td></tr>
+    <tr><td>400</td><td>user-dsh</td><td>现状 <code class="inline">~/.dsh/skills</code> → 改为 <code class="inline">$DSH_HOME/users/&lt;uid&gt;/skills</code></td><td>★ 用户私有技能，登录后各看各的</td></tr>
+    <tr><td>500</td><td>user-agents</td><td>现状 <code class="inline">~/.agents/skills</code> → 平台全局技能 <code class="inline">$DSH_HOME/global-skills</code></td><td>管理员下发的公共技能（含未来技能市场安装目标）</td></tr>
+    <tr><td>600</td><td>bundled</td><td><code class="inline">bundledSkillDir</code></td><td>不变：随插件分发的内置技能</td></tr>
+  </table>
+  <div class="ok"><b>实现要点（改动极小）：</b><code class="inline">skill-filesystem</code> 的 root 解析本就读配置 + <code class="inline">dshHome</code> 服务。做法：① 插件监听请求作用域里的 <code class="inline">currentUser</code> 服务；② root 解析函数把 rank 400/150 的路径模板化（<code class="inline">users/&lt;uid&gt;/skills</code>）；③ 现有 watcher、frontmatter 解析、first-wins 合并、<code class="inline">modelInvocable/userInvocable</code> 策略全部复用。技能市场 = 往 rank 150/500 目录安装 SKILL.md 包，<b>零引擎改动</b>。</div>
+  <h3>9.2 技能可见性与安全</h3>
+  <table>
+    <tr><th>风险</th><th>对策</th></tr>
+    <tr><td>租户技能名遮蔽用户技能（rank 高）</td><td>保留现状语义（first-wins 是特性）；但 UI 展示「被遮蔽」标记，用户可 <code class="inline">disable-model-invocation</code> 关掉高 rank 项</td></tr>
+    <tr><td>恶意 SKILL.md 注入指令</td><td>技能市场安装走审核；SKILL.md 体只做文本注入，禁止 scripts 自动执行（frontmatter 白名单），执行类能力仍走工具授权</td></tr>
+    <tr><td>跨用户技能文件读取</td><td>root 只允许列在用户可见集内；skill-filesystem 的 <code class="inline">list()</code> 入口校验 root 归属，防止配置注入他人路径</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>十、插件管理与插件设置的分级设计（2026-08-30 增补）</h2>
+  <p>技能（SKILL.md）是<b>内容层</b>，插件（Cordis package）是<b>代码层</b>——前者只是文本注入，后者在进程内全权限执行。两者的分级模型必须分开设计。先看源码现状：</p>
+  <h3>10.1 现状盘点：dsh 的插件与设置机制（源码核实）</h3>
+  <table>
+    <tr><th>机制</th><th>现状实现</th><th>多用户缺口</th></tr>
+    <tr><td><b>插件组装</b></td><td>profile = 具名组装：bundle 顺序 → profile <code class="inline">cordis.patch.yml</code> → home 级 patch → <code class="inline">--patch</code> overlay，四层叠加按 id 替换/插入行；<code class="inline">dsh --dump-config</code> 可审查</td><td>profile 与 patch 全落 DSH_HOME，<b>home 即单用户</b>，无系统/用户之分</td></tr>
+    <tr><td><b>插件安装</b></td><td><code class="inline">dsh plugin</code> CLI 把树外插件装进 profile 的 node_modules + patch 条目</td><td>装进的是「这台机器的 home」，无归属、无审批、无版本治理</td></tr>
+    <tr><td><b>动态插件</b></td><td>extensions 组（tool-cordis / cordis-host-runner 等）：运行期 define/run/remove 动态 Cordis 包，<b>仅内存、重启即清</b>，不写仓库文件</td><td>内存级恰好天然按请求作用域隔离，可保留（见 5.6）</td></tr>
+    <tr><td><b>插件设置</b></td><td><code class="inline">ctx.settings</code> 命名空间：schema 默认 → cordis.yml 组装 base → <code class="inline">settings.yaml</code> 用户层，三层解析热生效；<code class="inline">describe()</code> 已分层暴露 base/user 并支持 secret 脱敏</td><td>「用户层」指本机 <code class="inline">~/.dsh/settings.yaml</code>——还是 home 级单用户</td></tr>
+  </table>
+  <div class="warn"><b>核心矛盾：Cordis 插件在进程内全权限运行（可注册任意服务/工具/网络访问）——用户级安装插件 = 授予服务器任意代码执行权。</b>这与技能（纯文本）的安全模型差一个数量级，分级设计的重心因此放在「安装准入」上。</div>
+
+  <h3>10.2 插件管理：三级安装 + 用户级启用</h3>
+  <table>
+    <tr><th>维度</th><th>级别</th><th>目录 / 载体</th><th>准入与治理</th></tr>
+    <tr><td rowspan="3"><b>安装</b><br>（代码准入）</td><td>系统级 platform</td><td><code class="inline">$DSH_HOME/system-plugins/</code>（管理员维护，独立于任何 profile）</td><td>管理员安装 + 安全审计 + 统一版本升级；全租户可见。典型：dsh-base 核心、mcp-client、医院内部工具插件</td></tr>
+    <tr><td>租户级 tenant</td><td><code class="inline">$DSH_HOME/tenants/&lt;tid&gt;/plugins/</code></td><td>租户管理员审批安装，仅本租户可见（医院场景 = 科室级自制插件）</td></tr>
+    <tr><td>用户级 user</td><td><code class="inline">$DSH_HOME/users/&lt;uid&gt;/profile/node_modules/</code> + 该用户 patch 条目</td><td><b>Phase 1 默认关闭</b>（仅白名单市场 + 管理员审批）；Phase 2 接市场审核+签名后放开</td></tr>
+    <tr><td><b>启用/禁用</b><br>（组装选择）</td><td>纯用户级</td><td>用户 patch：<code class="inline">users/&lt;uid&gt;/profile/cordis.patch.yml</code></td><td>系统给基础 bundle，用户 patch 决定启用哪些已准入插件；patch 中引用未准入插件行 → 启动校验直接拒绝（fail-closed）</td></tr>
+  </table>
+  <p><b>为什么「安装分级、启用归用户」成立：</b>dsh 的层叠顺序天然是「先系统后用户」——bundle（系统）→ profile patch（可扩展为租户策略层）→ 用户 patch。用户 patch 只能<b>替换/插入选行</b>，而行的代码本体必须先存在于已准入目录；租户管理员还可以用更高层 patch 强制禁用某插件（insert 替换为 disabled 行），用户层改不回来。层级即权限，现成机制零改造。</p>
+
+  <h3>10.3 插件设置：四级解析 + 租户可锁</h3>
+  <p>把 <code class="inline">ctx.settings</code> 现有三层解析（schema 默认 → base → user）中间插一层租户策略，用户层挪进用户桶：</p>
+  <table>
+    <tr><th>层</th><th>归属</th><th>载体</th><th>能力</th></tr>
+    <tr><td>L0 schema 默认</td><td>插件作者</td><td>代码内 schemastery schema</td><td>不变</td></tr>
+    <tr><td>L1 系统 base</td><td>平台管理员</td><td>cordis.yml 组装配置</td><td>不变：LLM 路由、存储后端等部署级参数</td></tr>
+    <tr><td>L2 租户策略 <b>（新增）</b></td><td>租户管理员</td><td>PG 表 <code class="inline">plugin_policy</code></td><td>两种操作：<b>force</b>（强制值，如禁遥测、强制凭证脱敏）+ <b>lock</b>（锁字段，用户层对该字段的修改被忽略）</td></tr>
+    <tr><td>L3 用户覆盖</td><td>最终用户</td><td><code class="inline">users/&lt;uid&gt;/settings.yaml</code></td><td>现状机制不变，只换文档路径；被 lock 的字段写入被拒或静默忽略</td></tr>
+  </table>
+  <div class="ok"><b>实现成本低：</b>settings 服务的分层解析与 <code class="inline">describe()</code> 三层暴露（base/user 分离、secret 脱敏）本就是为配置 UI 设计的。改动只有三处：① 注册 options 增加 policy 输入层；② <code class="inline">settings-file</code> 文档路径参数化到用户桶（与 attachment-local 同模式）；③ <code class="inline">describe()</code> 增加 locked/forcedBy 标记，UI 据此渲染灰掉/只读。凭证类字段继续走每用户加密凭证（app_user.credential），<b>永不进 settings 文档</b>。</div>
+
+  <h3>10.4 动态插件（extensions 组）与 MCP 的归属</h3>
+  <table>
+    <tr><th>机制</th><th>多用户语义</th></tr>
+    <tr><td>动态 Cordis 包（agent 运行期 define）</td><td>定义只存进程内存 → 天然挂在<b>请求作用域 isolate</b>下，用户 A 定义的包用户 B 不可见、重启即清。<b>零改造</b>，只需确认 define 入口在 isolate 内执行</td></tr>
+    <tr><td>MCP 服务器接入（如 dsh-mcp-manager 管理的 patch 条目）</td><td>按「接入的是谁的服务」分级：医院统一 MCP（药品查询）= 系统级 patch 条目；科室/个人 MCP = 租户/用户 patch 条目。现状 mcp-manager 写的是 profile 级 patch，服务器形态下改写目标按 patch 归属路由即可</td></tr>
+  </table>
+
+  <h3>10.5 登记表与验收</h3>
+  <p>安装准入与租户策略需要落 PG（加入第十四节数据模型）：</p>
+  <pre><code>-- 插件登记（准入审计，非启用关系——启用关系在用户 patch 文件里）
+CREATE TABLE plugin (
+  plugin_id     TEXT PRIMARY KEY,        -- npm 包名或内部 id
+  scope_type    TEXT NOT NULL CHECK (scope_type IN ('system','tenant','user')),
+  tenant_id     TEXT REFERENCES tenant(tenant_id),  -- system 级为 NULL
+  owner_user_id TEXT REFERENCES app_user(user_id),     -- 安装发起人
+  version       TEXT NOT NULL,
+  status        TEXT NOT NULL,           -- approved | pending | rejected
+  manifest_hash TEXT NOT NULL,           -- 安装包指纹（防替换）
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- 租户设置策略（L2）
+CREATE TABLE plugin_policy (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id    TEXT NOT NULL REFERENCES tenant(tenant_id),
+  plugin_id    TEXT NOT NULL,
+  ns           TEXT NOT NULL,            -- settings 命名空间
+  field_path   TEXT NOT NULL,            -- 字段路径（支持点号嵌套）
+  policy_type  TEXT NOT NULL CHECK (policy_type IN ('force','lock')),
+  value        JSONB,                    -- force 时的强制值
+  PRIMARY KEY (tenant_id, plugin_id, ns, field_path)
+);</code></pre>
+  <p><b>验收用例（4 条）：</b>① 用户 patch 引用未准入插件 → 启动被拒；② 租户 lock 某字段 → 用户改 settings.yaml 无效且 UI 灰掉；③ 租户 force 禁遥测 → 所有用户 describe() 该字段只读；④ 用户 A 安装（白名单内）插件 → 用户 B 的 dump-config 无此行。</p>
+</section>
+
+<section>
+  <h2>十一、用户资产与产物</h2>
+  <p>dsh 里「资产/产物」分四类，现状全部无归属维度，改造方式各不相同：</p>
+  <table>
+    <tr><th>类别</th><th>现状包 / 位置</th><th>改造动作</th><th>共享策略</th></tr>
+    <tr><td><b>附件</b>（用户上传图片）</td><td><code class="inline">attachment-local</code> → DSH_HOME 下无主目录</td><td>后端实例化时注入 <code class="inline">users/&lt;uid&gt;/attachments</code> 根；新增 artifacts 域记录归属/大小/会话关联</td><td>随会话共享只读；fork 时复制</td></tr>
+    <tr><td><b>溢出产物</b>（超限工具输出）</td><td><code class="inline">spill-local</code> → 会话私有文件</td><td>会话已有隔离；只需补归属元数据（会话 → 用户的传递闭包）</td><td>随会话走，不单独共享</td></tr>
+    <tr><td><b>导出产物</b>（会话 ZIP）</td><td><code class="inline">session-log-export</code> → 浏览器直接下载</td><td>服务器模式下 ZIP 先落 <code class="inline">users/&lt;uid&gt;/artifacts/</code>，登记有效期与下载计数（审计合规）</td><td>下载链接带一次性 Token</td></tr>
+    <tr><td><b>生成物</b>（会话里写出的文件）</td><td>落在工作区目录，无登记</td><td>工作区在用户桶/共享区内的，归属天然成立；共享工作区的生成物默认「最后写入者所有 + 成员可读」（类 Git 工作区语义）</td><td>工作区成员制</td></tr>
+  </table>
+  <h3>artifacts 归属域（storage-domain 声明式草案）</h3>
+  <pre><code>// packages/storage/storage-domain 风格的域声明（伪代码）
+domain 'artifacts' {
+  key: artifactId
+  fields {
+    artifactId  UUID
+    userId      string   // 归属用户
+    tenantId    string
+    kind        enum { attachment, spill, export, generated }
+    sessionId   UUID?    // 关联会话（生成物可空）
+    path        string   // 相对用户桶的路径
+    bytes       int
+    createdAt   datetime
+    expiresAt   datetime?  // 导出 ZIP 类的清理策略
+  }
+  index (userId, kind, createdAt)
+  change-events: on create | delete   // 复用现有变更事件做配额统计
+}</code></pre>
+  <div class="warn"><b>配额必做：</b>多用户服务器上「永不自动删除」的附件策略必须改为按租户配额 + LRU 清理（attachment README 明确 current 永不删，服务器模式要加配置开关），否则磁盘会被打爆。</div>
+</section>
+
+<section>
+  <h2>十二、用户会话记忆</h2>
+  <p>现状没有独立记忆模块，「记忆」= 会话日志 + compaction 摘要 + 投影缓存 + 配置层。多用户后建议把记忆显式化为<b>四层金字塔</b>，全部走已有接缝：</p>
+  <div class="fig">
+    <svg viewBox="0 0 680 260" width="100%" role="img" xmlns="http://www.w3.org/2000/svg">
+    <title>四层记忆模型</title>
+    <text x="40" y="24" font-family="sans-serif" font-size="15" font-weight="500" fill="#1f2329">记忆分层：越往上私有性越强，越往下共享面越大</text>
+    <g><rect x="190" y="42" width="300" height="44" rx="8" fill="#FAECE7" stroke="#993C1D" stroke-width="0.5"/>
+    <text x="340" y="64" font-family="sans-serif" font-size="13" font-weight="500" fill="#712B13" text-anchor="middle">L1 会话内记忆 = 事件日志 + compaction 摘要（已有）</text></g>
+    <g><rect x="150" y="96" width="380" height="44" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+    <text x="340" y="118" font-family="sans-serif" font-size="13" font-weight="500" fill="#085041" text-anchor="middle">L2 工作区记忆 = projcache + 项目缓存（已有，补 owner）</text></g>
+    <g><rect x="110" y="150" width="460" height="44" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="340" y="172" font-family="sans-serif" font-size="13" font-weight="500" fill="#0C447C" text-anchor="middle">L3 用户记忆（新增）：users/&lt;uid&gt;/memory + 注入 system-prompt</text></g>
+    <g><rect x="70" y="204" width="540" height="44" rx="8" fill="#F3EDFB" stroke="#6B3FA0" stroke-width="0.5"/>
+    <text x="340" y="226" font-family="sans-serif" font-size="13" font-weight="500" fill="#4A2B70" text-anchor="middle">L4 租户记忆（新增）：团队约定 / 术语表 / 规范，管理员维护，全员注入</text></g>
+    </svg>
+  </div>
+  <table>
+    <tr><th>层</th><th>存什么</th><th>怎么写</th><th>怎么读（注入）</th></tr>
+    <tr><td>L1 会话内</td><td>完整事件流、自动压缩摘要</td><td>现有 <code class="inline">compaction</code> / <code class="inline">/compact</code></td><td>现有 assembleContextFor</td></tr>
+    <tr><td>L2 工作区</td><td>标题、token 统计、项目缓存</td><td>现有 <code class="inline">session-projection</code></td><td>宿主 UI</td></tr>
+    <tr><td>L3 用户</td><td>跨会话事实：偏好、常做任务、踩坑记录（类 WorkBuddy MEMORY.md）</td><td><b>新增</b>：① 会话结束时的记忆抽取任务（LLM 摘要固化）；② 用户显式「记住这个」命令</td><td><b>新增</b>：system-prompt 注册一个 memory section（dsh-system-prompt 本就支持分段注册），按当前 uid 取 L3 条目渲染</td></tr>
+    <tr><td>L4 租户</td><td>团队规范、领域术语、合规红线</td><td>管理员维护 markdown/表格</td><td>同上，rank 在 L3 之前</td></tr>
+  </table>
+  <div class="tip"><b>为什么能复用：</b><code class="inline">dsh-system-prompt</code> 的契约是「分段（section）注册、全局拼装」，<code class="inline">storage-domain</code> 的契约是「schema 校验 KV + 变更事件」。L3/L4 = 一个 memory 域 + 一个 prompt section 插件，两个新包即可，不动核心。</div>
+  <p>记忆的隐私红线：L3 记忆永远不出用户桶；L4 注入前用户可见可关闭（审计要求时管理员只看元数据不看内容，按需拍板）。</p>
+</section>
+
+<section>
+  <h2>十三、历史会话</h2>
+  <h3>13.1 现状能力（可直接继承）</h3>
+  <table>
+    <tr><th>能力</th><th>包</th><th>说明</th></tr>
+    <tr><td>统一查询服务</td><td><code class="inline">session-query</code>（ctx.sessionQuery）</td><td>精确读、血缘追踪、过滤列表、分页读取</td></tr>
+    <tr><td>全文搜索</td><td><code class="inline">session-query-sqlite</code></td><td>SQLite FTS5 索引，搜索结果与模型所见历史一致</td></tr>
+    <tr><td>模型侧检索工具</td><td><code class="inline">tool-session-query</code></td><td>5 个工具，带 workspace 授权边界</td></tr>
+    <tr><td>导出</td><td><code class="inline">session-log-export</code></td><td>Web /export 下载会话 ZIP</td></tr>
+  </table>
+  <h3>13.2 多用户改造点</h3>
+  <table>
+    <tr><th>#</th><th>改造点</th><th>说明</th><th>难度</th></tr>
+    <tr><td>1</td><td>授权边界升级：workspace authority → user authority</td><td>tool-session-query 的越权校验从「当前工作区」改为「当前用户可见集（私有 ∪ 共享 ∪ 团队工作区）」</td><td>中</td></tr>
+    <tr><td>2</td><td>全文检索切 PostgreSQL</td><td>服务器模式：会话正文索引入 PG（<code class="inline">tsvector</code> 生成列 + GIN 索引 + user_id 行过滤），中文分词用 <code class="inline">zhparser</code> 或 pg_jieba 扩展；本地 CLI 保留 FTS5——session-query 的抽象层保证两后端行为一致，<b>不存在「按用户分库」问题</b></td><td>中</td></tr>
+    <tr><td>3</td><td>历史列表 API 加用户维度</td><td>Web 端「历史会话」侧栏 = workspaceRegistry（按用户过滤）× sessionQuery（过滤列表）组合查询，投影缓存补 owner 列</td><td>低</td></tr>
+    <tr><td>4</td><td>跨会话检索作为记忆入口</td><td>「用户记忆」的写入口可复用检索结果——新会话组装上下文时，先 FTS 搜历史相似问题（可选功能，token 成本可控时开）</td><td>低</td></tr>
+    <tr><td>5</td><td>血缘图 UI</td><td>lineage 字段已能表达「fork 自谁」，历史列表可渲染会话树（与 AIMS 面板的历史会话视图天然契合）</td><td>低</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>十四、数据模型（先表结构，后测试数据——按惯例）</h2>
+  <div class="warn"><b>存储决策（2026-08-30 龙哥拍板）：服务器形态一律 PostgreSQL，不用 SQLite。</b>理由：① 服务器多进程/多实例并发读写，SQLite 的文件锁在网络文件系统与容器卷上不可靠；② 元数据需要 RLS 行级安全做越权兜底，SQLite 无原生等价物；③ 全文检索需要 zhparser/pg_jieba 中文分词 + GIN 索引；④ 与 ITHelper 服务端（PostgreSQL）同栈，运维一体。分工：PostgreSQL 承载 <b>元数据 + 会话索引 + 记忆 + 共享授权</b>；会话正文 jsonl、附件、spill 等大文件资产仍落 DSH_HOME 用户桶（数据库只存引用与配额）；<b>本地 CLI 模式保留 jsonl/sqlite 现状</b>（uid=local），storage 可插拔抽象层保证两种后端行为一致。</div>
+  <p>元数据库（PostgreSQL 14+，新增 <code class="inline">storage-postgres</code> 后端承载，连接串走 <code class="inline">DSH_DB_URL</code> 环境变量；表前缀 <code class="inline">mu_</code> 表 multiuser）：</p>
+
+  <h3>14.1 数据库关系图（ER 图）</h3>
+  <p>十张表按五个域着色（紫=组织/插件域、蓝=身份域、绿=工作区域、红=会话域、琥珀=资产/记忆域）。归属主链：<b>租户 → 用户 → 工作区/会话 → 共享/资产</b>；图中连线为主要关系，字段内 <code class="inline">→ X</code> 标注即外键指向（未连线的外键如 plugin.owner_user_id 见字段标注与下方关系清单）。<b>v2026-09-06 增列：</b>app_user / workspace / session_meta 实体盒各加 <code class="inline">biz_key</code> 字段；workspace 额外加 <code class="inline">status</code> 与 <code class="inline">privacy</code> 字段；下方虚线标注三组 <code class="inline">UNIQUE (tenant_id, biz_key)</code> 业务键唯一索引（不计入 15 条外键，独立于关系图连线）。</p>
+  <div class="fig">
+    <svg viewBox="0 0 680 800" width="100%" role="img" xmlns="http://www.w3.org/2000/svg">
+    <title>十张元数据表实体关系图</title>
+    <text x="40" y="22" font-family="sans-serif" font-size="15" font-weight="500" fill="#1f2329">实体关系图：十张表、十五条外键 + 三组业务键唯一索引 —— 归属主链 租户 → 用户 → 工作区/会话 → 共享/资产</text>
+
+    <!-- ===== 关系连线（先画线，实体盒覆盖在上） ===== -->
+    <g stroke="#5f6b7a" stroke-width="1.2" fill="none">
+      <path d="M150 170 V85 H250"/>          <!-- user→tenant -->
+      <path d="M320 170 V134"/>               <!-- workspace→tenant -->
+      <path d="M250 210 H170"/>               <!-- workspace.owner→user -->
+      <path d="M320 316 V283"/>               <!-- member→workspace -->
+      <path d="M270 316 V301 H120 V283"/>     <!-- member→user -->
+      <path d="M100 460 V283"/>               <!-- session→user -->
+      <path d="M170 480 H212 V240 H250"/>     <!-- session→workspace -->
+      <path d="M250 490 H170"/>               <!-- share→session -->
+      <path d="M260 460 L162 283"/>           <!-- share.created_by→user -->
+      <path d="M100 655 V573"/>               <!-- artifact→session -->
+      <path d="M30 700 H14 V230 H30"/>        <!-- artifact→user（左侧绕行） -->
+      <path d="M555 336 V263"/>               <!-- policy→plugin -->
+      <path d="M470 410 H425 V75 H390"/>      <!-- policy→tenant -->
+    </g>
+    <path d="M470 175 H445 V58 H390" stroke="#5f6b7a" stroke-width="1.2" stroke-dasharray="5 4" fill="none"/> <!-- plugin→tenant（可空） -->
+    <path d="M390 710 H430" stroke="#B45309" stroke-width="1.1" stroke-dasharray="5 4" fill="none"/> <!-- memory→多态注记 -->
+
+    <!-- ===== 基数标注 ===== -->
+    <g font-family="sans-serif" font-size="10" fill="#5f6b7a">
+      <text x="196" y="80">N : 1</text>
+      <text x="328" y="156">N : 1</text>
+      <text x="176" y="204">1</text><text x="238" y="204">N</text>
+      <text x="328" y="296">1</text><text x="328" y="312">N</text>
+      <text x="192" y="296">M : N</text>
+      <text x="108" y="296">1</text><text x="108" y="452">N</text>
+      <text x="220" y="474">∅</text>
+      <text x="200" y="484">N : 1</text>
+      <text x="230" y="388">created_by</text>
+      <text x="106" y="618">0..N</text>
+      <text x="408" y="52">0..1</text>
+      <text x="418" y="94" text-anchor="end">N : 1</text>
+      <text x="562" y="312">N : 1</text>
+    </g>
+    <text x="9" y="465" transform="rotate(-90 9 465)" font-family="sans-serif" font-size="10" fill="#5f6b7a" text-anchor="middle">N : 1 归属</text>
+
+    <!-- ===== 实体：组织/插件域（紫） ===== -->
+    <g>
+      <rect x="250" y="36" width="140" height="98" rx="8" fill="#ffffff" stroke="#6B3FA0" stroke-width="1"/>
+      <path d="M250 44 a8 8 0 0 1 8 -8 h124 a8 8 0 0 1 8 8 v16 h-140 z" fill="#F3EDFB"/>
+      <text x="320" y="53" font-family="sans-serif" font-size="12" font-weight="700" fill="#4A2B70" text-anchor="middle">tenant 租户</text>
+      <text x="260" y="76" font-family="sans-serif" font-size="11" font-weight="700" fill="#1f2329">tenant_id PK</text>
+      <text x="260" y="91" font-family="sans-serif" font-size="11" fill="#1f2329">name</text>
+      <text x="260" y="106" font-family="sans-serif" font-size="11" fill="#1f2329">quota_bytes 配额</text>
+      <text x="260" y="121" font-family="sans-serif" font-size="11" fill="#1f2329">encrypt_key 密钥</text>
+    </g>
+    <g>
+      <rect x="470" y="150" width="170" height="113" rx="8" fill="#ffffff" stroke="#6B3FA0" stroke-width="1"/>
+      <path d="M470 158 a8 8 0 0 1 8 -8 h154 a8 8 0 0 1 8 8 v16 h-170 z" fill="#F3EDFB"/>
+      <text x="555" y="167" font-family="sans-serif" font-size="12" font-weight="700" fill="#4A2B70" text-anchor="middle">plugin 插件登记</text>
+      <text x="480" y="188" font-family="sans-serif" font-size="11" font-weight="700" fill="#1f2329">plugin_id PK</text>
+      <text x="480" y="203" font-family="sans-serif" font-size="11" fill="#1f2329">scope_type（三级）</text>
+      <text x="480" y="218" font-family="sans-serif" font-size="11" fill="#5f6b7a">tenant_id →租户（∅）</text>
+      <text x="480" y="233" font-family="sans-serif" font-size="11" fill="#5f6b7a">owner_user_id →用户</text>
+      <text x="480" y="248" font-family="sans-serif" font-size="11" fill="#1f2329">status · manifest_hash</text>
+    </g>
+    <g>
+      <rect x="470" y="336" width="170" height="113" rx="8" fill="#ffffff" stroke="#6B3FA0" stroke-width="1"/>
+      <path d="M470 344 a8 8 0 0 1 8 -8 h154 a8 8 0 0 1 8 8 v16 h-170 z" fill="#F3EDFB"/>
+      <text x="555" y="353" font-family="sans-serif" font-size="12" font-weight="700" fill="#4A2B70" text-anchor="middle">plugin_policy 租户策略</text>
+      <text x="480" y="374" font-family="sans-serif" font-size="11" font-weight="700" fill="#1f2329">tenant_id（PK）→租户</text>
+      <text x="480" y="389" font-family="sans-serif" font-size="11" font-weight="700" fill="#1f2329">plugin_id（PK）→插件</text>
+      <text x="480" y="404" font-family="sans-serif" font-size="11" font-weight="700" fill="#1f2329">ns · field_path（PK）</text>
+      <text x="480" y="419" font-family="sans-serif" font-size="11" fill="#1f2329">policy_type（force/lock）</text>
+      <text x="480" y="434" font-family="sans-serif" font-size="11" fill="#1f2329">value（JSONB）</text>
+    </g>
+
+    <!-- ===== 实体：身份域（蓝） ===== -->
+    <g>
+      <rect x="30" y="170" width="140" height="128" rx="8" fill="#ffffff" stroke="#185FA5" stroke-width="1"/>
+      <path d="M30 178 a8 8 0 0 1 8 -8 h124 a8 8 0 0 1 8 8 v16 h-140 z" fill="#E6F1FB"/>
+      <text x="100" y="187" font-family="sans-serif" font-size="12" font-weight="700" fill="#0C447C" text-anchor="middle">app_user 用户</text>
+      <text x="40" y="208" font-family="sans-serif" font-size="11" font-weight="700" fill="#1f2329">user_id PK</text>
+      <text x="40" y="223" font-family="sans-serif" font-size="11" fill="#5f6b7a">tenant_id →租户</text>
+      <text x="40" y="238" font-family="sans-serif" font-size="11" fill="#1f2329">username（租户内唯一）</text>
+      <text x="40" y="253" font-family="sans-serif" font-size="11" fill="#1f2329">auth_type / auth_ref</text>
+      <text x="40" y="268" font-family="sans-serif" font-size="11" fill="#1f2329">credential 密文</text>
+      <text x="40" y="283" font-family="sans-serif" font-size="11" fill="#1f2329">biz_key <tspan font-size="10" fill="#8a6d1a">宿主业务键</tspan></text>
+    </g>
+
+    <!-- ===== 实体：工作区域（绿） ===== -->
+    <g>
+      <rect x="250" y="170" width="140" height="158" rx="8" fill="#ffffff" stroke="#0F6E56" stroke-width="1"/>
+      <path d="M250 178 a8 8 0 0 1 8 -8 h124 a8 8 0 0 1 8 8 v16 h-140 z" fill="#E1F5EE"/>
+      <text x="320" y="187" font-family="sans-serif" font-size="12" font-weight="700" fill="#085041" text-anchor="middle">workspace 工作区</text>
+      <text x="260" y="208" font-family="sans-serif" font-size="11" font-weight="700" fill="#1f2329">workspace_id PK</text>
+      <text x="260" y="223" font-family="sans-serif" font-size="11" fill="#5f6b7a">owner_user_id →用户</text>
+      <text x="260" y="238" font-family="sans-serif" font-size="11" fill="#5f6b7a">tenant_id →租户</text>
+      <text x="260" y="253" font-family="sans-serif" font-size="11" fill="#1f2329">dir_path（桶内）</text>
+      <text x="260" y="268" font-family="sans-serif" font-size="11" fill="#1f2329">is_shared</text>
+      <text x="260" y="283" font-family="sans-serif" font-size="11" fill="#1f2329">biz_key <tspan font-size="10" fill="#8a6d1a">宿主业务键</tspan></text>
+      <text x="260" y="298" font-family="sans-serif" font-size="11" fill="#1f2329">status <tspan font-size="10" fill="#8a6d1a">active/archived</tspan></text>
+      <text x="260" y="313" font-family="sans-serif" font-size="11" fill="#1f2329">privacy <tspan font-size="10" fill="#8a6d1a">shared/private</tspan></text>
+    </g>
+    <g>
+      <rect x="250" y="316" width="140" height="83" rx="8" fill="#ffffff" stroke="#0F6E56" stroke-width="1"/>
+      <path d="M250 324 a8 8 0 0 1 8 -8 h124 a8 8 0 0 1 8 8 v16 h-140 z" fill="#E1F5EE"/>
+      <text x="320" y="333" font-family="sans-serif" font-size="12" font-weight="700" fill="#085041" text-anchor="middle">workspace_member</text>
+      <text x="260" y="354" font-family="sans-serif" font-size="11" font-weight="700" fill="#1f2329">workspace_id（PK）</text>
+      <text x="260" y="369" font-family="sans-serif" font-size="11" font-weight="700" fill="#1f2329">user_id（PK）</text>
+      <text x="260" y="384" font-family="sans-serif" font-size="11" fill="#1f2329">role（reader/writer）</text>
+    </g>
+
+    <!-- ===== 实体：会话域（红） ===== -->
+    <g>
+      <rect x="30" y="460" width="140" height="128" rx="8" fill="#ffffff" stroke="#993C1D" stroke-width="1"/>
+      <path d="M30 468 a8 8 0 0 1 8 -8 h124 a8 8 0 0 1 8 8 v16 h-140 z" fill="#FAECE7"/>
+      <text x="100" y="477" font-family="sans-serif" font-size="12" font-weight="700" fill="#712B13" text-anchor="middle">session_meta 会话</text>
+      <text x="40" y="498" font-family="sans-serif" font-size="11" font-weight="700" fill="#1f2329">session_id PK（TEXT）</text>
+      <text x="40" y="513" font-family="sans-serif" font-size="11" fill="#5f6b7a">user_id →用户</text>
+      <text x="40" y="528" font-family="sans-serif" font-size="11" fill="#5f6b7a">workspace_id →工作区</text>
+      <text x="40" y="543" font-family="sans-serif" font-size="11" fill="#1f2329">tenant_id（冗余）</text>
+      <text x="40" y="558" font-family="sans-serif" font-size="11" fill="#1f2329">title（GIN 全文）</text>
+      <text x="40" y="573" font-family="sans-serif" font-size="11" fill="#1f2329">biz_key <tspan font-size="10" fill="#8a6d1a">宿主业务键</tspan></text>
+    </g>
+    <g>
+      <rect x="250" y="460" width="140" height="128" rx="8" fill="#ffffff" stroke="#993C1D" stroke-width="1"/>
+      <path d="M250 468 a8 8 0 0 1 8 -8 h124 a8 8 0 0 1 8 8 v16 h-140 z" fill="#FAECE7"/>
+      <text x="320" y="477" font-family="sans-serif" font-size="12" font-weight="700" fill="#712B13" text-anchor="middle">session_share 共享</text>
+      <text x="260" y="498" font-family="sans-serif" font-size="11" font-weight="700" fill="#1f2329">share_id PK</text>
+      <text x="260" y="513" font-family="sans-serif" font-size="11" fill="#5f6b7a">session_id →会话</text>
+      <text x="260" y="528" font-family="sans-serif" font-size="11" fill="#1f2329">grantee_type / id</text>
+      <text x="260" y="543" font-family="sans-serif" font-size="11" fill="#1f2329">permission（read/fork）</text>
+      <text x="260" y="558" font-family="sans-serif" font-size="11" fill="#1f2329">expires_at</text>
+      <text x="260" y="573" font-family="sans-serif" font-size="11" fill="#5f6b7a">created_by →用户</text>
+    </g>
+
+    <!-- ===== 实体：资产/记忆域（琥珀） ===== -->
+    <g>
+      <rect x="30" y="655" width="140" height="128" rx="8" fill="#ffffff" stroke="#B45309" stroke-width="1"/>
+      <path d="M30 663 a8 8 0 0 1 8 -8 h124 a8 8 0 0 1 8 8 v16 h-140 z" fill="#FFF8E6"/>
+      <text x="100" y="672" font-family="sans-serif" font-size="12" font-weight="700" fill="#854F0B" text-anchor="middle">artifact 资产登记</text>
+      <text x="40" y="693" font-family="sans-serif" font-size="11" font-weight="700" fill="#1f2329">artifact_id PK</text>
+      <text x="40" y="708" font-family="sans-serif" font-size="11" fill="#5f6b7a">user_id →用户</text>
+      <text x="40" y="723" font-family="sans-serif" font-size="11" fill="#1f2329">tenant_id（冗余）</text>
+      <text x="40" y="738" font-family="sans-serif" font-size="11" fill="#1f2329">kind（四类）</text>
+      <text x="40" y="753" font-family="sans-serif" font-size="11" fill="#5f6b7a">session_id →会话（∅）</text>
+      <text x="40" y="768" font-family="sans-serif" font-size="11" fill="#1f2329">expires_at 清理</text>
+    </g>
+    <g>
+      <rect x="250" y="655" width="140" height="113" rx="8" fill="#ffffff" stroke="#B45309" stroke-width="1"/>
+      <path d="M250 663 a8 8 0 0 1 8 -8 h124 a8 8 0 0 1 8 8 v16 h-140 z" fill="#FFF8E6"/>
+      <text x="320" y="672" font-family="sans-serif" font-size="12" font-weight="700" fill="#854F0B" text-anchor="middle">memory 记忆 L3/L4</text>
+      <text x="260" y="693" font-family="sans-serif" font-size="11" font-weight="700" fill="#1f2329">memory_id PK</text>
+      <text x="260" y="708" font-family="sans-serif" font-size="11" fill="#5f6b7a">scope_type + scope_id</text>
+      <text x="260" y="723" font-family="sans-serif" font-size="11" fill="#1f2329">content</text>
+      <text x="260" y="738" font-family="sans-serif" font-size="11" fill="#1f2329">source_session（血缘）</text>
+      <text x="260" y="753" font-family="sans-serif" font-size="11" fill="#1f2329">weight</text>
+    </g>
+
+    <!-- ===== 图例 ===== -->
+    <g>
+      <rect x="430" y="470" width="235" height="185" rx="8" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
+      <text x="442" y="492" font-family="sans-serif" font-size="12" font-weight="700" fill="#1f2329">图例</text>
+      <rect x="442" y="502" width="12" height="12" fill="#F3EDFB" stroke="#6B3FA0"/><text x="460" y="512" font-family="sans-serif" font-size="11" fill="#1f2329">组织 / 插件域</text>
+      <rect x="548" y="502" width="12" height="12" fill="#E6F1FB" stroke="#185FA5"/><text x="566" y="512" font-family="sans-serif" font-size="11" fill="#1f2329">身份域</text>
+      <rect x="442" y="524" width="12" height="12" fill="#E1F5EE" stroke="#0F6E56"/><text x="460" y="534" font-family="sans-serif" font-size="11" fill="#1f2329">工作区域</text>
+      <rect x="548" y="524" width="12" height="12" fill="#FAECE7" stroke="#993C1D"/><text x="566" y="534" font-family="sans-serif" font-size="11" fill="#1f2329">会话域</text>
+      <rect x="442" y="546" width="12" height="12" fill="#FFF8E6" stroke="#B45309"/><text x="460" y="556" font-family="sans-serif" font-size="11" fill="#1f2329">资产 / 记忆域</text>
+      <text x="442" y="580" font-family="sans-serif" font-size="11" fill="#1f2329">加粗 = 主键；→ X = 外键指向 X</text>
+      <text x="442" y="600" font-family="sans-serif" font-size="11" fill="#1f2329">虚线 = 可空外键；∅ = 可空端</text>
+      <text x="442" y="620" font-family="sans-serif" font-size="11" fill="#1f2329">（冗余）= RLS 过滤列，无外键</text>
+      <text x="442" y="640" font-family="sans-serif" font-size="11" fill="#1f2329">1 / N / M:N = 连线两端基数</text>
+    </g>
+
+    <!-- ===== 多态引用注记 ===== -->
+    <g>
+      <rect x="430" y="680" width="235" height="85" rx="8" fill="#FFFDF5" stroke="#B45309" stroke-width="1" stroke-dasharray="5 4"/>
+      <text x="442" y="702" font-family="sans-serif" font-size="12" font-weight="700" fill="#854F0B">多态引用（无物理外键）</text>
+      <text x="442" y="722" font-family="sans-serif" font-size="11" fill="#1f2329">memory.scope_type + scope_id</text>
+      <text x="442" y="738" font-family="sans-serif" font-size="11" fill="#1f2329">→ app_user（L3）或 tenant（L4）</text>
+      <text x="442" y="754" font-family="sans-serif" font-size="11" fill="#1f2329">应用层校验 + RLS 策略双重兜底</text>
+    </g>
+    </svg>
+  </div>
+  <p><b>外键关系清单（含级联策略——PG 默认 RESTRICT，下表只列差异项的显式选择）：</b></p>
+  <table>
+    <tr><th>外键关系</th><th>基数</th><th>ON DELETE</th><th>说明</th></tr>
+    <tr><td><code class="inline">app_user.tenant_id</code> → tenant</td><td>N : 1</td><td>RESTRICT</td><td>删租户前必须先清空用户</td></tr>
+    <tr><td><code class="inline">workspace.tenant_id</code> → tenant</td><td>N : 1</td><td>RESTRICT</td><td>同上，租户是硬边界</td></tr>
+    <tr><td><code class="inline">workspace.owner_user_id</code> → app_user</td><td>N : 1</td><td>RESTRICT</td><td>删用户需先转移/删除其工作区</td></tr>
+    <tr><td><code class="inline">workspace_member</code>（workspace_id, user_id）</td><td>M : N</td><td>CASCADE</td><td>成员关系随任一端删除自动清理</td></tr>
+    <tr><td><code class="inline">session_meta.user_id</code> → app_user</td><td>N : 1</td><td>RESTRICT</td><td>会话是审计对象，禁止级联删除</td></tr>
+    <tr><td><code class="inline">session_meta.workspace_id</code> → workspace</td><td>N : 1（可空）</td><td>SET NULL</td><td>工作区删除后会话保留（对齐现状「删项目不删历史」）</td></tr>
+    <tr><td><code class="inline">session_share.session_id</code> → session_meta</td><td>N : 1</td><td>CASCADE</td><td>会话删除则共享授权随之失效</td></tr>
+    <tr><td><code class="inline">session_share.created_by</code> → app_user</td><td>N : 1</td><td>RESTRICT</td><td>授权人删除前需先撤销其发出的共享</td></tr>
+    <tr><td><code class="inline">artifact.user_id</code> → app_user</td><td>N : 1</td><td>RESTRICT</td><td>资产按配额管理，不随用户级联消失</td></tr>
+    <tr><td><code class="inline">artifact.session_id</code> → session_meta</td><td>N : 1（可空）</td><td>SET NULL</td><td>会话归档后资产保留，交由 expires_at 清理任务</td></tr>
+    <tr><td><code class="inline">plugin.tenant_id</code> → tenant</td><td>N : 1（可空）</td><td>CASCADE</td><td>system 级为 NULL；租户删除连带其准入登记</td></tr>
+    <tr><td><code class="inline">plugin_policy.tenant_id</code> → tenant</td><td>N : 1</td><td>CASCADE</td><td>策略随租户消失</td></tr>
+    <tr><td><code class="inline">plugin_policy.plugin_id</code> → plugin</td><td>N : 1</td><td>CASCADE</td><td>插件下架则策略失效</td></tr>
+    <tr><td><code class="inline">memory.scope_*</code> → app_user / tenant</td><td>多态</td><td>应用层</td><td>无物理外键，删除用户/租户时由迁移命令清理记忆</td></tr>
+    <tr><td><code class="inline">session_meta.tenant_id</code> / <code class="inline">artifact.tenant_id</code></td><td>冗余列</td><td>—</td><td>RLS 行过滤专用（<code class="inline">current_setting('dsh.tenant')</code>），不加外键约束</td></tr>
+  </table>
+
+  <h4>业务键唯一索引（v2026-09-06 增，非外键）</h4>
+  <table>
+    <tr><th>索引</th><th>表</th><th>列</th><th>ON CONFLICT</th><th>说明</th></tr>
+    <tr><td><code class="inline">idx_app_user_biz</code></td><td>app_user</td><td><code class="inline">(tenant_id, biz_key)</code></td><td>DO NOTHING</td><td>ensure user 时按 biz_key 幂等（username 也独立唯一）</td></tr>
+    <tr><td><code class="inline">idx_workspace_biz</code></td><td>workspace</td><td><code class="inline">(tenant_id, biz_key)</code></td><td>DO NOTHING</td><td>ensure 患者/主工作空间时按 biz_key 幂等</td></tr>
+    <tr><td><code class="inline">idx_session_meta_biz</code></td><td>session_meta</td><td><code class="inline">(tenant_id, biz_key)</code></td><td>DO NOTHING</td><td>ensure 就诊会话时按 biz_key 幂等</td></tr>
+  </table>
+
+  <pre><code>-- ============ 1. 租户与用户 ============
+
+CREATE TABLE tenant (
+  tenant_id   UUID PRIMARY KEY,
+  name        TEXT NOT NULL,
+  quota_bytes BIGINT NOT NULL DEFAULT 10737418240,  -- 10G
+  encrypt_key BYTEA,                      -- 租户级加密密钥（对齐 Dify：加密该租户凭证/敏感数据）
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE app_user (
+  user_id     UUID PRIMARY KEY,           -- 本地模式固定 '00000000-0000-0000-0000-00000000000d'
+  tenant_id   UUID NOT NULL REFERENCES tenant(tenant_id),
+  username    TEXT NOT NULL,
+  biz_key     TEXT NOT NULL,              -- v2026-09-06 增：宿主业务键（AIMS 算好的不透明字符串，如 aims.D2024001）；DSH 不解析语义，仅存储与索引
+  auth_type   TEXT NOT NULL CHECK (auth_type IN ('token','oidc','apikey','local')),
+  auth_ref    TEXT,                       -- oidc subject / token hash
+  credential  BYTEA,                      -- 加密的 API 凭证（可空=用平台凭证）
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, username),
+  UNIQUE (tenant_id, biz_key)             -- ensure 用户时按 biz_key 幂等的核心索引
+);
+CREATE INDEX idx_app_user_biz ON app_user (tenant_id, biz_key);   -- 唯一索引下已隐含查询索引
+
+-- ============ 2. 工作区归属（改造 workspace.json）============
+CREATE TABLE workspace (
+  workspace_id  UUID PRIMARY KEY,
+  owner_user_id UUID NOT NULL REFERENCES app_user(user_id),
+  tenant_id     UUID NOT NULL REFERENCES tenant(tenant_id),
+  display_name  TEXT NOT NULL,
+  dir_path      TEXT NOT NULL,            -- 服务器上的物理目录（桶内相对路径）
+  is_shared     BOOLEAN NOT NULL DEFAULT false,
+  biz_key       TEXT,                     -- v2026-09-06 增：宿主业务键（如 patient.CURE123；一患者一工作空间）；可空=本地创建无业务键的空间
+  status        TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','archived')),  -- v2026-09-06 增：业务状态机（出院/归档→archived）
+  privacy       TEXT NOT NULL DEFAULT 'shared' CHECK (privacy IN ('shared','private')),-- v2026-09-06 增：AIMS 翻译后的隐私策略（private = 医生私有，不建 workspace_member）
+  sort_order    INTEGER NOT NULL DEFAULT 0,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, biz_key)             -- ensure 工作空间时按 biz_key 幂等
+);
+CREATE INDEX idx_workspace_biz ON workspace (tenant_id, biz_key);
+CREATE INDEX idx_workspace_status ON workspace (tenant_id, status);  -- 按状态过滤（活跃/归档）
+CREATE TABLE workspace_member (        -- 共享工作区成员
+  workspace_id UUID NOT NULL REFERENCES workspace(workspace_id),
+  user_id      UUID NOT NULL REFERENCES app_user(user_id),
+  role         TEXT NOT NULL CHECK (role IN ('reader','writer')),
+  PRIMARY KEY (workspace_id, user_id)
+);
+
+-- ============ 3. 会话归属（jsonl 正文在桶内；本表=PG 索引层）============
+CREATE TABLE session_meta (
+  session_id   TEXT PRIMARY KEY,          -- 现有 session uuid
+  user_id      UUID NOT NULL REFERENCES app_user(user_id),
+  workspace_id UUID REFERENCES workspace(workspace_id),
+  tenant_id    UUID NOT NULL,
+  biz_key      TEXT,                      -- v2026-09-06 增：宿主业务键（如 visit.V20260906001；一次就诊一会话）
+  title        TEXT,
+  status       TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','closed')),  -- v2026-09-06 增：active/closed（出院结算后关闭）
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, biz_key)             -- ensure 会话时按 biz_key 幂等
+);
+CREATE INDEX idx_session_meta_user ON session_meta (user_id, updated_at DESC);
+CREATE INDEX idx_session_meta_biz ON session_meta (tenant_id, biz_key);
+-- 全文索引：写入侧由 session-query-postgres 维护；中文分词用 zhparser/pg_jieba
+CREATE INDEX idx_session_meta_title_fts ON session_meta
+  USING gin (to_tsvector('simple', coalesce(title,'')));
+
+-- ============ 4. 会话共享 ============
+CREATE TABLE session_share (
+  share_id     UUID PRIMARY KEY,
+  session_id   TEXT NOT NULL REFERENCES session_meta(session_id),
+  grantee_type TEXT NOT NULL CHECK (grantee_type IN ('user','tenant','link')),
+  grantee_id   TEXT,                      -- user_id / tenant_id / 一次性 token
+  permission   TEXT NOT NULL CHECK (permission IN ('read','fork')),
+  expires_at   TIMESTAMPTZ,
+  created_by   UUID NOT NULL REFERENCES app_user(user_id),
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ============ 5. 记忆（L3/L4）============
+CREATE TABLE memory (
+  memory_id      UUID PRIMARY KEY,
+  scope_type     TEXT NOT NULL CHECK (scope_type IN ('user','tenant')),
+  scope_id       UUID NOT NULL,           -- user_id / tenant_id
+  content        TEXT NOT NULL,
+  source_session TEXT,                    -- 写入来源会话（血缘）
+  weight         INTEGER NOT NULL DEFAULT 0,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_memory_scope ON memory (scope_type, scope_id, updated_at DESC);
+
+-- ============ 6. 资产登记 ============
+CREATE TABLE artifact ( /* 见第六节域声明，字段类型同 PG 风格 */ );
+
+-- ============ 7. 审计日志（v2026-09-06 第二轮补全 DDL）============
+-- 与 14.2 / 18.5 审计 + traceId 透传契约对齐
+CREATE TABLE audit_log (
+  audit_id      BIGSERIAL PRIMARY KEY,
+  tenant_id     UUID NOT NULL REFERENCES tenant(tenant_id),
+  actor_user_id UUID REFERENCES app_user(user_id),  -- 可空=机器尚未解析身份；机器身份='apimachine' 是合法值
+  session_id    TEXT REFERENCES session_meta(session_id),  -- 可空（机器渠道写/读业务对象时无 session）
+  trace_id      UUID NOT NULL,                     -- X-Dsh-Trace-Id，跨系统 grep
+  action        TEXT NOT NULL,                     -- e.g. 'workspaces.ensure' / 'token.issue' / 'lookup.user'
+  target_type   TEXT,                              -- e.g. 'workspace' / 'session' / 'credential'
+  target_id     TEXT,                              -- 目标 id（可以是 uuid 也可是 biz_key 的字符串）
+  payload       JSONB,                             -- 请求/响应摘要（脱敏）
+  occurred_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_audit_log_tenant_time ON audit_log (tenant_id, occurred_at DESC);
+CREATE INDEX idx_audit_log_trace      ON audit_log (trace_id);
+CREATE INDEX idx_audit_log_actor      ON audit_log (actor_user_id, occurred_at DESC);
+COMMENT ON COLUMN audit_log.actor_user_id IS '机器渠道下为虚拟系统用户（uid=apimachine），与人类用户同空间登记但用 audit_log.action 区分（如 action 前缀 machine.）';
+
+-- ============ RLS 行级安全兜底（服务器模式必开）============
+-- 连接层：每个请求开始时 SET LOCAL（事务级，连接归还池自动失效）
+--   SET LOCAL dsh.tenant = '&lt;tenantId&gt;';  SET LOCAL dsh.uid = '&lt;userId&gt;';
+ALTER TABLE session_meta ENABLE ROW LEVEL SECURITY;
+CREATE POLICY p_session_meta_rw ON session_meta
+  USING (
+    tenant_id = current_setting('dsh.tenant')::uuid
+    AND (
+      user_id = current_setting('dsh.uid')::uuid          -- 自己的
+      OR workspace_id IN (                                 -- 共享工作区成员的
+           SELECT workspace_id FROM workspace_member
+           WHERE user_id = current_setting('dsh.uid')::uuid)
+      OR EXISTS (SELECT 1 FROM session_share s          -- 被显式授权的
+           WHERE s.session_id = session_meta.session_id
+             AND s.grantee_type = 'user'
+             AND s.grantee_id = current_setting('dsh.uid')::uuid)
+    )
+  );
+ALTER TABLE memory ENABLE ROW LEVEL SECURITY;
+CREATE POLICY p_memory_rw ON memory
+  USING ( (scope_type='user'  AND scope_id = current_setting('dsh.uid')::uuid)
+       OR (scope_type='tenant' AND scope_id = current_setting('dsh.tenant')::uuid) );
+-- workspace / workspace_member / session_share 同理挂 tenant 边界策略
+-- 注意：dsh 服务连接用非超级用户角色（RLS 对表 owner/超级用户默认不生效），并 REVOKE 直连权限</code></pre>
+  <table>
+    <tr><th>PG 化要点</th><th>说明</th></tr>
+    <tr><td>RLS 生效前提</td><td>服务账号必须是<b>非表 owner 的普通角色</b>，否则策略被绕过；每请求 <code class="inline">SET LOCAL</code> 绑定在事务内，连接池归还即失效，不会串号</td></tr>
+    <tr><td>TEXT vs UUID</td><td>session_id 保持 TEXT（兼容现有 uuid 字符串，避免全量改型）；人/租户/工作区等新实体一律 UUID</td></tr>
+    <tr><td>时间类型</td><td>TIMESTAMPTZ 统一带时区——服务器多用户跨时区/审计必备，SQLite 的 TEXT 时间无法比较排序</td></tr>
+    <tr><td>本地 CLI 降级</td><td>uid=local 时 storage-postgres 不装配，回落 jsonl+sqlite（现状），不要求本地装 PG</td></tr>
+    <tr><td>迁移</td><td><code class="inline">dsh migrate multiuser</code> 附带 <code class="inline">--to-postgres</code>：本地 SQLite 数据导入 PG（单用户试点升服务器时用）</td></tr>
+  </table>
+  <p>对应测试数据脚本要点（下一步可单独出，PG 版）：1 租户 2 用户、3 工作区（1 私有 + 1 共享 + 1 无关用户私有）、5 会话（含 1 条 fork 血缘）、2 条 share（read/fork 各一）、L3/L4 记忆各 2 条、附件/导出物各 1 条——足够覆盖全部权限矩阵用例；<b>另加 3 条 RLS 负向用例（跨租户读、跨用户读、过期 share 读均应 0 行）</b>。</p>
+
+  <h3>14.2 <code class="inline">/mu/v1</code> API 契约汇总（DSH 侧对外暴露的接口镜像）</h3>
+  <p>本表是《AIMS-DSH 多租户对接方案》第九节在 DSH 侧的<b>权威镜像</b>——AIMS 实施时直接按本表对接；<b>v2026-09-06 第二轮定型</b>。全部端点走机器渠道（API Key），作用域 = 单一租户 + 路径白名单（防止 Key 越租户写，审计六元组含 actor 字段）。base path：<code class="inline">https://&lt;dsh-host&gt;/mu/v1</code>。</p>
+  <table>
+    <tr><th>#</th><th>端点</th><th>语义</th><th>幂等键 / biz_key</th><th>归属实现</th><th>优先级 / 阶段</th></tr>
+    <tr><td>1</td><td><code class="inline">POST /mu/v1/tenants:ensure</code></td><td>租户 upsert（首次部署/新院区一次）</td><td>tenantKey（DSH 不解析）</td><td>#17 host/lookup</td><td>高（阶段 1 依赖）</td></tr>
+    <tr><td>2</td><td><code class="inline">POST /mu/v1/users:ensure</code></td><td>用户 upsert</td><td><code class="inline">biz_key = aims.{userCode}</code></td><td>#17 host/lookup</td><td>高（阶段 1 依赖）</td></tr>
+    <tr><td>3</td><td><code class="inline">POST /mu/v1/workspaces:ensure</code></td><td>工作空间 upsert（支持 bizKey / is_shared / display_name / privacy）</td><td><code class="inline">biz_key = aims.{userCode}-main</code>（主工作空间）<br><code class="inline">biz_key = patient.{cureno}</code>（患者工作空间）</td><td>#17 host/lookup</td><td>高（阶段 1 依赖）</td></tr>
+    <tr><td>4</td><td><code class="inline">POST /mu/v1/workspaces/{id}/members</code></td><td>成员授予/移除（writer / reader 角色）</td><td>(workspaceId, appUserId)</td><td>#17 host/lookup</td><td>中（阶段 2/3 依赖）</td></tr>
+    <tr><td>5</td><td><code class="inline">POST /mu/v1/workspaces/{id}/sessions:ensure</code></td><td>在指定工作空间下建/取会话</td><td><code class="inline">biz_key = visit.{visitId}</code></td><td>#17 host/lookup</td><td>中（阶段 2/3 依赖）</td></tr>
+    <tr><td>6</td><td><code class="inline">POST /mu/v1/auth/token:issue</code></td><td>机器 Key 换发用户 JWT（uid/tid/scope/ttl）</td><td>—</td><td>#1 host/auth</td><td><b>最高（AIMS 全链路前提）</b></td></tr>
+    <tr><td>7<br><span style="color:#8a3a1d">v2026-09-06 第二轮增</span></td><td><code class="inline">POST /mu/v1/workspaces/{id}:archive</code></td><td>工作空间归档（Google AIP-136 操作型端点，PATCH status='archived' 等价语义；上层选择其一即可）</td><td>—</td><td>#17 host/lookup（业务层薄包装）</td><td>低（可后补，AIMS 也可走 PATCH）</td></tr>
+    <tr><td>8</td><td><code class="inline">GET /mu/v1/lookup?type={user|workspace|session}&amp;biz_key=&amp;tenant_key=</code></td><td>按 <code class="inline">UNIQUE (tenant_id, biz_key)</code> 索引反查内部 id；AIMS 零映射表设计的硬依赖</td><td>(tenant_id, biz_key)</td><td>#17 host/lookup</td><td><b>最高（AIMS 阶段 1 前提）</b></td></tr>
+    <tr><td>9<br><span style="color:#8a3a1d">v2026-09-06 第二轮增</span></td><td><code class="inline">POST /mu/v1/ensure/{tenant|user|workspace|session}</code></td><td>ensure 族合并入口（lookup NotFound 时调此做幂等 upsert）；type ∈ 4 类</td><td>(tenant_id, biz_key)</td><td>#17 host/lookup</td><td>高（阶段 1 依赖）</td></tr>
+  </table>
+  <div class="warn"><b>鉴权与审计（v2026-09-06 第二轮补充）：</b>① 全部端点走机器渠道（API Key），路径白名单限定仅 <code class="inline">/mu/v1/*</code>；② Key 作用域必须绑定单一 tenantId——越租户调用 <code class="inline">tenants:ensure</code> 返回 <code class="inline">403 forbidden_cross_tenant</code>；③ 审计六元组 = (tenantId, actor=机器身份, targetEntity, targetEntityId, action, traceId)；其中 actor 在机器渠道下为虚拟系统用户 <code class="inline">uid=apimachine</code>（不是真实人类用户，sessionId 可空）；④ <code class="inline">lookup</code> 接口也走机器渠道（同 Key 同 scope），避免匿名反查被滥用。</div>
+  <div class="tip"><b>traceId 透传契约</b>（v2026-09-06 第二轮约定，对齐 AIMS 第十节威胁面分析）：AIMS 上游 → DSH 下游全链路使用单一 traceId（UUIDv4），由 AIMS panel-context 调用方生成 → 写入每个 <code class="inline">/mu/v1</code> 调用 HTTP header <code class="inline">X-Dsh-Trace-Id</code> → DSH apiproxy 读后绑进 PG 会话变量 <code class="inline">SET LOCAL dsh.trace_id = '...'</code> → 写 audit_log 行 → 转 bridge 上行时同步。跨系统排查可直接 grep 同一 traceId。</div>
+</section>
+
+<section>
+  <h2>十五、改动点清单（包级映射）</h2>
+  <div class="tip"><b>阅读注意（2026-08-30 晚增补）：</b>本表最初按「改官方包」口径编写；第十九节已将全部 16 项重新分类为树外实现（A 新插件 / B patch 配置替换 / C 上游依赖规避 / D 独立 CLI），<b>0 项需要改官方包源码（零 fork）</b>。下表「包」列应理解为「树外仓库中对应职责的包/patch」，详见 19.1 重分类表。</div>
+  <table>
+    <tr><th>#</th><th>包</th><th>改动类型</th><th>内容</th><th>难度</th></tr>
+    <tr><td>1</td><td><b>新增</b> <code class="inline">host/auth</code></td><td>新插件</td><td>强制认证中间件（fail-closed）+ 多渠道授权（OIDC/JWT/API Key/一次性链接，见二节矩阵）+ currentUser 服务 + <b>网关四件套：请求超时 / 并发上限 / 每用户配额 / 审计日志（tenantId,userId,sessionId,traceId）</b></td><td>中</td></tr>
+    <tr><td>2</td><td><b>新增</b> <code class="inline">host/multiuser-context</code></td><td>新插件</td><td>请求级 isolate 装配：按 uid 实例化各服务工厂</td><td>中（核心）</td></tr>
+    <tr><td>3</td><td><code class="inline">session/session-persistence-jsonl</code></td><td>修改</td><td>路径计算加 <code class="inline">users/&lt;uid&gt;/</code> 前缀（读 currentUser）</td><td>低</td></tr>
+    <tr><td>4</td><td><b>新增</b> <code class="inline">storage/storage-postgres</code></td><td>新插件</td><td>PG 连接池（DSH_DB_URL）+ 事务级 <code class="inline">SET LOCAL dsh.uid/dsh.tenant</code> + RLS 策略初始化；表迁移脚本（node-pg / postgres.js 驱动）</td><td>中</td></tr>
+    <tr><td>5</td><td><code class="inline">session-persistence-jsonl / -sqlite</code></td><td>修改</td><td>jsonl 路径加用户前缀（读 currentUser）；sqlite 仅本地 CLI，建表加 user_id 列；<b>服务器模式由 storage-postgres 承载索引层</b></td><td>低</td></tr>
+    <tr><td>6</td><td><code class="inline">session-query</code> 家族</td><td>修改</td><td>可见集计算（user ∪ share ∪ workspace-member）；<b>新增 query-postgres：tsvector+GIN 全文检索（zhparser 中文分词）+ RLS 双保险</b></td><td>中</td></tr>
+    <tr><td>7</td><td><code class="inline">skill/skill-filesystem</code></td><td>修改</td><td>rank 400/150 路径模板化到请求作用域</td><td>低</td></tr>
+    <tr><td>8</td><td><code class="inline">attachment/attachment-local</code>、<code class="inline">spill/spill-local</code></td><td>修改</td><td>根目录注入用户桶 + 配额开关</td><td>低</td></tr>
+    <tr><td>9</td><td><code class="inline">workspace</code></td><td>修改</td><td>注册表记录加 owner/tenant/成员；存储切 storage-domain</td><td>中</td></tr>
+    <tr><td>10</td><td><b>新增</b> <code class="inline">core/memory</code> + <code class="inline">memory-prompt-section</code></td><td>新插件</td><td>L3/L4 记忆域 + system-prompt 分段注入</td><td>中</td></tr>
+    <tr><td>11</td><td><b>新增</b> <code class="inline">session/session-share</code></td><td>新插件</td><td>share 表 CRUD + fork（复用 resume + lineage）</td><td>中</td></tr>
+    <tr><td>12</td><td><code class="inline">session-log-export</code></td><td>修改</td><td>服务器模式落盘 artifacts + 一次性下载 Token</td><td>低</td></tr>
+    <tr><td>13</td><td><code class="inline">credentials</code></td><td>修改</td><td>每用户凭证加密存储（脱离全局 .credentials.yaml）</td><td>中（安全敏感）</td></tr>
+    <tr><td>14</td><td>CLI</td><td>修改</td><td><code class="inline">dsh migrate multiuser</code> 迁移命令（含 <code class="inline">--to-postgres</code> 本地升服务器导入）；未登录回退 local 桶</td><td>低</td></tr>
+    <tr><td>15</td><td><code class="inline">boot/app-boot</code> + <code class="inline">dsh plugin</code></td><td>修改</td><td>插件三级准入（system/tenant/user 目录约定 + plugin 登记）；用户 patch 挪入用户桶，启动校验 patch 只引用已准入插件（fail-closed）</td><td>中</td></tr>
+    <tr><td>16</td><td><code class="inline">settings/settings</code> + <code class="inline">settings-file</code></td><td>修改</td><td>四级解析（schema → base → 租户策略 → 用户层）；settings 文档路径用户桶化；<code class="inline">describe()</code> 增加 locked/forcedBy 标记</td><td>低</td></tr>
+    <tr><td><b>17</b><br><span style="color:#8a3a1d">v2026-09-06 增</span></td><td><b>新增</b> <code class="inline">host/lookup</code>（归 <code class="inline">host/auth</code> 包）</td><td>新插件</td><td>宿主业务键反查族：<code class="inline">GET /mu/v1/lookup?type=user|workspace|session&amp;biz_key=&amp;tenant_key=</code>，按 <code class="inline">(tenant_id, biz_key)</code> 索引返回内部 id；<code class="inline">POST /mu/v1/ensure/{type}</code> 做幂等创建/查找，<b>v2026-09-06 第二轮扩展 type ∈ {tenant, user, workspace, session}</b>（AIMS 部署时一次性 <code class="inline">tenants:ensure</code>）。AIMS 侧 <code class="inline">DshProvisioningService</code> 主路径唯一入口</td><td>低</td></tr>
+    <tr><td><b>18</b><br><span style="color:#8a3a1d">v2026-09-06 增</span></td><td><code class="inline">storage/storage-postgres</code></td><td>修改</td><td>DDL 增量：<code class="inline">app_user</code> / <code class="inline">workspace</code> / <code class="inline">session_meta</code> 各加 <code class="inline">biz_key TEXT</code>；<code class="inline">workspace</code> 加 <code class="inline">status</code> / <code class="inline">privacy</code>；<code class="inline">session_meta</code> 加 <code class="inline">status</code>；三张表 <code class="inline">UNIQUE (tenant_id, biz_key)</code> 索引；<code class="inline">ALTER TABLE</code> 增量迁移脚本（<code class="inline">migrations/0003_biz_key.sql</code>）</td><td>低</td></tr>
+  </table>
+  <div class="ok"><b>改动点编号说明（v2026-09-06 增）：</b>本表 #1–#16 来自原始方案；<b>#17 宿主业务键反查</b>与 <b>#18 storage-postgres DDL 增量</b>为对接 AIMS 场景新增——前者是反查/幂等 API（<b>A 类</b>：树外新插件），后者是 DDL 增量（<b>B 类</b>：storage-postgres 包内 ALTER 迁移）。合计 18 个改动点，零 fork 结论不变。
+  <div class="ok"><b>不改的（重要）：</b><code class="inline">agent-loop</code>、<code class="inline">tools</code>、<code class="inline">llm-*</code>、<code class="inline">system-prompt</code> 本体、<code class="inline">sandbox</code> 内核、全部 <code class="inline">tool-*</code> 工具——它们面向的服务契约不变。</div>
+</section>
+
+<section>
+  <h2>十六、实施路线（三阶段）</h2>
+  <table>
+    <tr><th>阶段</th><th>形态</th><th>内容</th><th>改动量</th><th>适合时机</th></tr>
+    <tr><td><b>Phase 0</b><br>进程级隔离</td><td>每用户一个 dsh 进程 + 独立 DSH_HOME（网关按用户路由到 127.0.0.1:3080+n）</td><td>不改代码，写部署脚本 + 反向代理；会话/技能/资产天然全隔离</td><td>≈0（运维）</td><td>立即可用、用户数 &lt;20 的内网试点</td></tr>
+    <tr><td><b>Phase 1</b><br>单进程多租户</td><td>一个 dsh 进程，请求级 isolate</td><td>改动点 #1–#9、#14：认证、用户桶、<b>storage-postgres（服务器 PG + RLS）</b>、会话/技能/资产/检索隔离，local 兼容模式</td><td>约 8 个包改动 + 3 新包</td><td>用户数 20–500，需要统一运维与审计</td></tr>
+    <tr><td><b>Phase 2</b><br>共享与协作</td><td>同上 + 共享层</td><td>改动点 #10–#13：share/fork、L3/L4 记忆、每用户凭证、共享工作区成员制、技能市场</td><td>约 4 项</td><td>团队协作场景成型后</td></tr>
+  </table>
+  <div class="tip"><b>医疗内网建议（结合 AIMS 场景）：</b>医院场景优先把 Phase 0 跑起来验证「数据不出院 + 按科室分租户」的运维形态；Phase 1 的认证直接对接医院 4A/OIDC，app_user.auth_type 预留接口即可。与 uai-widget 的整合点：宿主面板携带用户 Token 打 apiproxy，会话历史/共享列表可作为 DSH 面板的两个新 Tab。
+    <br><br>
+    <b>v2026-09-06 增补（biz_key 命名约定）：</b>为配合 AIMS 反查族（改动点 #17），<code class="inline">biz_key</code> 字段约定为不透明字符串（DSH 不解析语义）：
+  <ul>
+    <li><b>格式：</b><code class="inline">&lt;namespace&gt;.&lt;业务键&gt;</code>，长度上限 200 字符；推荐 namespace 三前缀之一：<code class="inline">aims</code>（AIMS 内部主键，如 <code class="inline">aims.D2024001</code>）、<code class="inline">patient</code>（患者，如 <code class="inline">patient.CURE123</code>）、<code class="inline">visit</code>（就诊，如 <code class="inline">visit.V20260906001</code>）</li>
+    <li><b>稳定性：</b>AIMS 必须保证同一业务实体对应同一 biz_key 跨会话/跨工作区不变（DB 主键直接拿来用最稳）</li>
+    <li><b>幂等：</b>三张表（<code class="inline">app_user</code> / <code class="inline">workspace</code> / <code class="inline">session_meta</code>）的 <code class="inline">UNIQUE (tenant_id, biz_key)</code> 索引保证 AIMS 重试安全（ON CONFLICT DO NOTHING）</li>
+    <li><b>冲突：</b>三前缀强制隔离避免 AIMS 内部主键与 DSH 业务键命名撞车（如 AIMS 用户表自增 ID 与 patient cureno 不会同 namespace）</li>
+  </ul>
+  Phase 1 上线即生效，依赖改动点 #17（lookup 族）+ #18（DDL 增量）。</div>
+  <div class="warn"><b>对标修正后的定性（2026-08-30）：</b>认证不是 Phase 1 里「可以先内网固定 Token 凑合」的项，而是<b>进入 Phase 1 的准入条件</b>——没有 fail-closed 认证与网关四件套，用户桶/共享/记忆全部免谈。Phase 2 的执行隔离可平滑升级为每会话容器/VM（dsh 已有 sandbox 可插拔层与 e2b 包，对齐 Manus/E2B 形态）。</div>
+
+  <h3>16.1 多用户功能列表（能力全景，按功能域）</h3>
+  <table>
+    <tr><th>功能域</th><th>功能</th><th>说明</th><th>角色可见性</th><th>Phase</th></tr>
+    <tr><td rowspan="5">认证授权</td><td>登录认证</td><td>OIDC / SSO（对接医院 4A），Web UI 主渠道</td><td>所有用户</td><td>P1</td></tr>
+    <tr><td>宿主代发 Token</td><td>uai-widget / AIMS 面板携带用户 JWT 打 apiproxy</td><td>所有用户</td><td>P1</td></tr>
+    <tr><td><b>宿主业务键反查</b><br><span style="color:#8a3a1d">v2026-09-06 增</span></td><td><code class="inline">GET /mu/v1/lookup?type=user|workspace|session&amp;biz_key=</code>，按 <code class="inline">UNIQUE(tenant_id,biz_key)</code> 索引返回内部 id；AIMS 侧 <code class="inline">DshProvisioningService</code> 唯一入口，零映射表</td><td>所有用户</td><td>P1</td></tr>
+    <tr><td>API Key（机器渠道）</td><td>作用域受限的服务间调用凭据</td><td>管理员签发</td><td>P1</td></tr>
+    <tr><td>一次性授权链接</td><td>限时只读查看（如专家远程会诊）</td><td>会话 owner 发起</td><td>P2</td></tr>
+    <tr><td rowspan="6">会话</td><td>私有会话</td><td>一切会话默认私有，他人不可见（RLS 保证）</td><td>owner</td><td>P1</td></tr>
+    <tr><td>历史会话列表</td><td>按用户过滤的会话侧栏（含标题/时间/token 用量）</td><td>owner</td><td>P1</td></tr>
+    <tr><td>全文检索</td><td>PG tsvector+GIN 搜自己的（含授权共享的）历史</td><td>owner + 被授权者</td><td>P1</td></tr>
+    <tr><td>导出 ZIP</td><td>会话导出走 artifacts 登记 + 一次性下载 Token</td><td>owner</td><td>P1/P2</td></tr>
+    <tr><td>只读分享 / Fork</td><td>share 表授权 read；fork = 以他人会话为种子开新会话（lineage 留血缘）</td><td>owner 授权</td><td>P2</td></tr>
+    <tr><td rowspan="4">技能</td><td>用户私有技能</td><td>rank 400 目录随用户桶</td><td>owner</td><td>P1</td></tr>
+    <tr><td>租户共享技能</td><td>rank 150 只读挂载，科室级沉淀</td><td>租户成员</td><td>P1</td></tr>
+    <tr><td>全局技能</td><td>rank 500 平台维护</td><td>所有人</td><td>P1</td></tr>
+    <tr><td>技能市场安装</td><td>往 rank 150/500 目录装 SKILL.md 包（走审核流）</td><td>管理员</td><td>P2</td></tr>
+    <tr><td rowspan="3">资产产物</td><td>用户资产桶</td><td>附件 / spill / 导出物全部入 users/&lt;uid&gt;/，互不可见</td><td>owner</td><td>P1</td></tr>
+    <tr><td>产物登记</td><td>artifacts 域记录归属/大小/来源会话</td><td>owner</td><td>P1</td></tr>
+    <tr><td>配额管理</td><td>租户/用户两级配额 + 超限拒绝 + 定期清理</td><td>管理员</td><td>P1/P2</td></tr>
+    <tr><td rowspan="3">记忆</td><td>L1/L2 会话内与工作区记忆</td><td>compaction 摘要（现状能力，零改动）</td><td>owner</td><td>现状</td></tr>
+    <tr><td>L3 用户记忆</td><td>跨会话 KV 域 + prompt 注入，永不出用户桶</td><td>owner</td><td>P2</td></tr>
+    <tr><td>L4 租户记忆</td><td>科室级共享知识，注入前用户可见可关</td><td>租户成员</td><td>P2</td></tr>
+    <tr><td rowspan="3">工作区</td><td><b>工作区状态机</b><br><span style="color:#8a3a1d">v2026-09-06 增</span></td><td><code class="inline">workspace.status</code>: active → archived（出院/归档触发）；<code class="inline">workspace.privacy</code>: shared / private（医生私有，不建 <code class="inline">workspace_member</code>）；<code class="inline">session_meta.status</code>: active → closed（结算后关闭）</td><td>owner</td><td>P1</td></tr>
+    <tr><td>私有工作区</td><td>workspace 注册表带 owner，按用户过滤</td><td>owner</td><td>P1</td></tr>
+    <tr><td>共享工作区</td><td>成员表 reader/writer 两级角色（预留 owner/admin）</td><td>成员</td><td>P2</td></tr>
+    <tr><td rowspan="4">插件与设置<br>（见十）</td><td>系统级插件管理</td><td>管理员安装/升级 system-plugins，全租户可见（plugin 登记）</td><td>管理员</td><td>P1</td></tr>
+    <tr><td>租户级插件管理</td><td>租户管理员审批安装 tenants/&lt;tid&gt;/plugins</td><td>租户管理员</td><td>P1/P2</td></tr>
+    <tr><td>用户插件启用</td><td>用户 patch 自主启停已准入插件；未准入行启动即拒</td><td>所有用户</td><td>P1</td></tr>
+    <tr><td>插件设置四级解析</td><td>租户 force/lock 策略 + 用户层覆盖（UI 灰掉锁定字段）</td><td>用户/租户管理员</td><td>P1/P2</td></tr>
+    <tr><td rowspan="3">平台管理</td><td>审计日志</td><td>tenantId,userId,sessionId,traceId 四元组全链路</td><td>管理员</td><td>P1</td></tr>
+    <tr><td>租户/用户管理</td><td>建租户、邀请用户、角色分配</td><td>管理员</td><td>P1</td></tr>
+    <tr><td>迁移工具</td><td>dsh migrate multiuser（含 --to-postgres 本地升服务器）</td><td>运维</td><td>P1</td></tr>
+  </table>
+  <div class="tip"><b>读表说明：</b>P1 = 单进程多租户阶段交付（认证 + 隔离优先）；P2 = 共享协作阶段交付；「现状」= dsh 已有能力直接继承。<b>v2026-09-06 增：</b>合计 28 项功能（新增「宿主业务键反查」+「工作区状态机」），其中 P1 交付 20 项——与改动点清单 #1–#9、#14–#18 对应。</div>
+</section>
+
+<section>
+  <h2>十七、风险与对策</h2>
+  <h3>17.1 风险登记表（含概率 / 影响 / 等级）</h3>
+  <table>
+    <tr><th>#</th><th>风险</th><th>场景</th><th>概率</th><th>影响</th><th>等级</th><th>对策</th></tr>
+    <tr><td>R1</td><td>路径逃逸</td><td>用户 A 的工作区目录参数指向 <code class="inline">users/B/</code></td><td>中</td><td>高</td><td><span class="lvl" style="background:#d85a30"></span><b>高</b></td><td>工作区 dir_path 只允许桶内相对路径；apiproxy 校验 cwd 与工作区归属一致后才放行 sandbox</td></tr>
+    <tr><td>R2</td><td>FTS 越权</td><td>全文搜索命中他人会话片段</td><td>中</td><td>高</td><td><span class="lvl" style="background:#d85a30"></span><b>高</b></td><td>搜索入口统一走可见集计算，禁止绕过 sessionQuery 直查索引表；<b>PG RLS 策略做数据库层兜底（应用层漏过滤也返回 0 行）</b></td></tr>
+    <tr><td>R3</td><td>凭证泄漏</td><td>现状 .credentials.yaml 明文全局</td><td>低（改造后）/ 高（不改造）</td><td>高</td><td><span class="lvl" style="background:#d85a30"></span><b>高</b></td><td>Phase 1 必做：每用户凭证 AES 加密入 app_user.credential；进程内解密仅限请求作用域生命周期</td></tr>
+    <tr><td>R4</td><td>插件市场供应链</td><td>共享技能/插件带恶意内容</td><td>低</td><td>高</td><td><span class="lvl" style="background:#f0a02e"></span><b>中高</b></td><td>rank 150/500 只读挂载 + 安装审核流；技能体禁自动执行脚本（frontmatter 白名单）</td></tr>
+    <tr><td>R5</td><td>配额与磁盘</td><td>附件/导出物永不删除策略打爆磁盘</td><td>高</td><td>中</td><td><span class="lvl" style="background:#f0a02e"></span><b>中高</b></td><td>租户配额表 + 导出物 expiresAt 定期清理任务（cordis timer 插件现成）</td></tr>
+    <tr><td>R6</td><td>并发写冲突</td><td>同一用户多端同时开会话</td><td>中</td><td>中</td><td><span class="lvl" style="background:#f0a02e"></span><b>中</b></td><td>现有 append-only + 连续序号已保证单会话安全；跨会话无共享可变状态，风险主要在 workspace 注册表（storage-domain 变更事件可收敛）</td></tr>
+    <tr><td>R7</td><td>RLS 被绕过</td><td>服务账号用了表 owner / 超级用户角色，策略不生效</td><td>中（易踩坑）</td><td>高</td><td><span class="lvl" style="background:#d85a30"></span><b>高</b></td><td>服务账号强制非 owner 普通角色 + CI 冒烟用例（跨租户/跨用户/过期 share 三负向断言 0 行）</td></tr>
+    <tr><td>R8</td><td>日志膨胀</td><td>多用户 jsonl+zstd 文件数爆炸</td><td>中</td><td>低</td><td><span class="lvl" style="background:#b8c26a"></span><b>低中</b></td><td>服务器模式：会话索引与元数据已在 PostgreSQL（session_meta），jsonl 仅为正文归档，可按租户配额做冷数据转存/清理；本地 CLI 用户量小无此问题</td></tr>
+    <tr><td>R9</td><td>遥测串号</td><td>anonymous-user-id 是 home 级，多用户共用一个 home</td><td>高</td><td>低</td><td><span class="lvl" style="background:#b8c26a"></span><b>低中</b></td><td>遥测改造为携带 uid 哈希（保持匿名性），或服务器模式直接关闭遥测</td></tr>
+    <tr><td>R10</td><td>用户插件任意代码执行</td><td>Cordis 插件进程内全权限运行，用户级安装 = 服务器任意代码执行权（见十）</td><td>低</td><td>高</td><td><span class="lvl" style="background:#f0a02e"></span><b>中高</b></td><td>Phase 1 用户级安装默认关闭（白名单 + 管理员审批）；启动校验 patch 只引用已准入插件（fail-closed）；Phase 2 市场审核 + 包签名 + manifest_hash 防替换</td></tr>
+    <tr><td>R11</td><td>官方破坏性升级</td><td>dsh 上游大版本重构服务契约（如 agent-loop 换血），树外插件需集中适配</td><td>中</td><td>中</td><td><span class="lvl" style="background:#f0a02e"></span><b>中</b></td><td>19.3 升级工作流：锁版本 + 契约检查前置暴露 + 允许锁老版一版缓冲；关键接缝持续向上游 PR 化解</td></tr>
+    <tr><td>R12<br><span style="color:#8a3a1d">v2026-09-06 增</span></td><td>宿主业务键命名冲突</td><td>AIMS 把 cureno（patient.CURE123）跟某个 visit id 写成同 biz_key，或 AIMS 自增 ID 跟 cureno 撞 namespace，导致 <code class="inline">UNIQUE (tenant_id, biz_key)</code> 误拒</td><td>低</td><td>中</td><td><span class="lvl" style="background:#b8c26a"></span><b>低中</b></td><td>三前缀命名空间（<code class="inline">aims</code> / <code class="inline">patient</code> / <code class="inline">visit</code>）强制隔离 + 409 错误对账日志 + 应用层 <code class="inline">ON CONFLICT DO UPDATE</code> 兜底</td></tr>
+  </table>
+
+  <h3>17.2 风险矩阵（概率 × 影响）</h3>
+  <div class="fig">
+    <svg viewBox="0 0 680 300" width="100%" role="img" xmlns="http://www.w3.org/2000/svg">
+    <title>风险矩阵</title>
+    <text x="40" y="24" font-family="sans-serif" font-size="15" font-weight="500" fill="#1f2329">风险矩阵：12 项风险按概率 × 影响落位（红=优先治理，黄=Phase 1 内闭环，绿=监控即可）</text>
+    <!-- 列头：影响 低中高 -->
+    <text x="240" y="56" font-family="sans-serif" font-size="12" fill="#5f6b7a" text-anchor="middle">影响：低</text>
+    <text x="420" y="56" font-family="sans-serif" font-size="12" fill="#5f6b7a" text-anchor="middle">中</text>
+    <text x="580" y="56" font-family="sans-serif" font-size="12" fill="#5f6b7a" text-anchor="middle">高</text>
+    <!-- 行头：概率 低中高 -->
+    <text x="100" y="96" font-family="sans-serif" font-size="12" fill="#5f6b7a" text-anchor="end">概率：高</text>
+    <text x="100" y="176" font-family="sans-serif" font-size="12" fill="#5f6b7a" text-anchor="end">中</text>
+    <text x="100" y="256" font-family="sans-serif" font-size="12" fill="#5f6b7a" text-anchor="end">低</text>
+    <!-- 单元格：行1 概率高 -->
+    <rect x="160" y="66" width="160" height="60" rx="8" fill="#e1f5ee" stroke="#bce8d8"/>
+    <text x="240" y="92" font-family="sans-serif" font-size="12" fill="#085041" text-anchor="middle">R5 配额磁盘</text>
+    <text x="240" y="110" font-family="sans-serif" font-size="11" fill="#5f6b7a" text-anchor="middle">R9 遥测串号</text>
+    <rect x="340" y="66" width="160" height="60" rx="8" fill="#fff8e6" stroke="#f0d48a"/>
+    <text x="420" y="100" font-family="sans-serif" font-size="12" fill="#854F0B" text-anchor="middle">（暂无）</text>
+    <rect x="520" y="66" width="140" height="60" rx="8" fill="#fcebe7" stroke="#f5c4b3"/>
+    <text x="590" y="100" font-family="sans-serif" font-size="12" fill="#8a3a1d" text-anchor="middle">（暂无）</text>
+    <!-- 行2 概率中 -->
+    <rect x="160" y="146" width="160" height="60" rx="8" fill="#fff8e6" stroke="#f0d48a"/>
+    <text x="240" y="172" font-family="sans-serif" font-size="12" fill="#854F0B" text-anchor="middle">R8 日志膨胀</text>
+    <text x="240" y="190" font-family="sans-serif" font-size="11" fill="#5f6b7a" text-anchor="middle">R6 并发写冲突</text>
+    <rect x="340" y="146" width="160" height="60" rx="8" fill="#fff8e6" stroke="#f0d48a"/>
+    <text x="420" y="174" font-family="sans-serif" font-size="12" fill="#854F0B" text-anchor="middle">R11 官方破坏性升级</text>
+    <text x="420" y="192" font-family="sans-serif" font-size="11" fill="#854F0B" text-anchor="middle">R12 业务键冲突</text>
+    <rect x="520" y="146" width="140" height="60" rx="8" fill="#fcebe7" stroke="#f5c4b3"/>
+    <text x="590" y="166" font-family="sans-serif" font-size="12" fill="#8a3a1d" text-anchor="middle">R1 路径逃逸</text>
+    <text x="590" y="182" font-family="sans-serif" font-size="12" fill="#8a3a1d" text-anchor="middle">R2 FTS 越权</text>
+    <text x="590" y="198" font-family="sans-serif" font-size="12" fill="#8a3a1d" text-anchor="middle">R7 RLS 绕过</text>
+    <!-- 行3 概率低 -->
+    <rect x="160" y="226" width="160" height="60" rx="8" fill="#e1f5ee" stroke="#bce8d8"/>
+    <text x="240" y="262" font-family="sans-serif" font-size="12" fill="#085041" text-anchor="middle">（暂无）</text>
+    <rect x="340" y="226" width="160" height="60" rx="8" fill="#e1f5ee" stroke="#bce8d8"/>
+    <text x="420" y="262" font-family="sans-serif" font-size="12" fill="#085041" text-anchor="middle">（暂无）</text>
+    <rect x="520" y="226" width="140" height="60" rx="8" fill="#fff8e6" stroke="#f0d48a"/>
+    <text x="590" y="252" font-family="sans-serif" font-size="12" fill="#854F0B" text-anchor="middle">R3 凭证泄漏</text>
+    <text x="590" y="270" font-family="sans-serif" font-size="12" fill="#854F0B" text-anchor="middle">R4 供应链</text>
+    <text x="590" y="288" font-family="sans-serif" font-size="12" fill="#854F0B" text-anchor="middle">R10 用户插件</text>
+    </svg>
+  </div>
+  <table>
+    <tr><th>等级</th><th>风险项</th><th>处置原则</th></tr>
+    <tr><td><span class="lvl" style="background:#d85a30"></span><b>红（高）</b></td><td>R1 / R2 / R3 / R7</td><td><b>进入 Phase 1 的准入条件</b>——四项全部要有代码级防线 + CI 负向用例，验收时逐项过</td></tr>
+    <tr><td><span class="lvl" style="background:#f0a02e"></span><b>黄（中高/中）</b></td><td>R4 / R5 / R6 / R10 / R11（不含 R12）</td><td>Phase 1 内闭环（配额上线、审核流挂起即可先拒后装、注册表事件收敛；R10 靠「用户级安装默认关闭」直接消解；R11 靠 14.3 升级工作流消化）</td></tr>
+    <tr><td><span class="lvl" style="background:#b8c26a"></span><b>绿（低中）</b></td><td>R8 / R9 / R12</td><td>监控指标 + 运维手册即可，不阻塞交付；R12 配套三个测试用例（不同 namespace 不冲突、错误命名空间 409 对账、ON CONFLICT DO UPDATE 兜底）</td></tr>
+  </table>
+  <div class="warn"><b>结构性观察：</b>四项红色风险（R1/R2/R3/R7，<b>不含 R12</b>）本质是同一个问题——<b>「用户边界是否被数据库和文件系统强制执行」</b>。对策已收敛为两道硬闸：文件侧「桶内相对路径 + cwd 归属校验」（R1）、数据库侧「RLS + 非 owner 服务角色 + 负向冒烟」（R2/R7），再加凭证侧「租户密钥加密 + 请求生命周期解密」（R3）。三道闸落在第九节 DDL 与第十节 #1/#4 两处，验收清单极短。</div>
+</section>
+
+<section>
+  <h2>十八、可测试性与可观察性设计（2026-08-30 增补）</h2>
+  <p>方案 16 个改动点、26 项功能，<b>没有验收证据的改动不允许进主干</b>。dsh 官方仓库自带一套成熟的测试基建（源码核实），本节直接对接，不自建轮子：</p>
+  <h3>18.1 dsh 现有测试基建盘点（全部可复用）</h3>
+  <table>
+    <tr><th>测试层</th><th>官方命令 / 机制</th><th>mu 改造怎么用</th></tr>
+    <tr><td>单元 + 覆盖门</td><td><code class="inline">pnpm run test</code> / <code class="inline">test:coverage</code>（vitest，<b>per-file 100% on src</b> 是硬门）</td><td>树外插件仓库同标准：每个 mu 包 100% 覆盖，未覆盖行视为死代码删掉</td></tr>
+    <tr><td>无 Key 回放</td><td><code class="inline">llm-replay</code>（录制模型流回放）/ <code class="inline">llm-mock-server</code>（OpenAI 兼容故障注入）</td><td>多用户场景全部 keyless 可测：两个用户并发会话、会话共享、fork 血缘，用回放流驱动，CI 不需要 API Key</td></tr>
+    <tr><td>快照测试</td><td><code class="inline">pnpm run test:snapshot</code>（session.jsonl 录制 → 回放 → 比对持久化结果；<code class="inline">snapshot.yml</code> 声明 profile）</td><td><b>mu 版核心武器</b>：同一场景分别以 mu-on / mu-off 两个 profile 跑快照——off 必须与官方基线字节一致（回归保障），on 验证多用户持久化结构</td></tr>
+    <tr><td>浏览器快照</td><td><code class="inline">test:web</code>（Chromium + ARIA 证据，Linux PR 必过门）</td><td>登录页 / 用户隔离后的会话侧栏 / 灰掉的锁定设置项，UI 级验收</td></tr>
+    <tr><td>启动冒烟</td><td><code class="inline">loader-smoke</code>（boot 完整 profile 发一轮对话检查世界）</td><td>官方升级第一道闸：bump 版本后先跑「官方 profile + mu patch」冒烟，3 分钟内暴露断链</td></tr>
+    <tr><td>真 API e2e</td><td><code class="inline">test:e2e</code>（带 Key 冒烟，无 Key 自动跳过）</td><td>上线前最后一道：真实模型 + 双用户并发 + 配额触发</td></tr>
+    <tr><td><b>运行时不变量</b></td><td><code class="inline">ctx.invariants</code> 注册表：每个包发布 <code class="inline">./invariant</code> 伴生插件，运行期断言（可 allowlist/blocklist 配置）</td><td><b>「可观察」的现成挂点</b>：mu 每个包注册不变量（见 18.4），生产环境开着跑，违例即报警</td></tr>
+  </table>
+  <h3>18.2 验收证据三层模型（每个改动点过三关）</h3>
+  <table>
+    <tr><th>层</th><th>证据形态</th><th>例子（以改动点 #3 用户桶为例）</th></tr>
+    <tr><td>L1 静态契约</td><td>TypeScript 类型 + 插件 <code class="inline">Requires:</code> 声明（缺依赖启动即拒）</td><td>attachment-local 注入的 root 必须实现 <code class="inline">AttachmentRoot</code> 接口；mu 插件 inject 失败 = 编译/启动期红灯，不用等运行</td></tr>
+    <tr><td>L2 运行时不变量</td><td><code class="inline">ctx.invariants</code> 断言（18.4）</td><td>「任何落盘路径必须以 <code class="inline">users/&lt;当前uid&gt;/</code> 开头」——每个写操作后断言，违例 fail-fast</td></tr>
+    <tr><td>L3 场景验收</td><td>快照 + 负向安全用例（18.3）</td><td>用户 A 存附件 → 用户 B 的文件列举不含 A 的路径（负向必须 0 行/0 文件）</td></tr>
+  </table>
+  <div class="ok"><b>规则：</b>Phase 1 的 14 项功能，每项至少 1 条 L3 场景用例 + 风险关联项各 1 条负向用例；用例与功能列表（16.1）同编号登记，CI 里独立 lane 展示——红灯可精确定位到某项功能，而不是「测试挂了一片」。</div>
+  <h3>18.3 负向安全用例集（红色风险 R1/R2/R3/R7/R10 的 CI 化）</h3>
+  <table>
+    <tr><th>用例</th><th>操作</th><th>期望（必须）</th><th>对应风险</th></tr>
+    <tr><td>N1</td><td>用户 A 把工作区 dir_path 指向 <code class="inline">users/B/</code></td><td>请求 4xx 拒绝，invariant 触发</td><td>R1 路径逃逸</td></tr>
+    <tr><td>N2</td><td>用户 A 全文搜索命中用户 B 会话的独有关键词</td><td>0 行（应用层过滤 + RLS 双验证：故意绕过应用层直查 SQL 也 0 行）</td><td>R2 FTS 越权</td></tr>
+    <tr><td>N3</td><td>读 <code class="inline">.credentials.yaml</code> 所在用户桶外的凭证文件</td><td>不可达（路径校验 + 进程内凭证缓存仅在请求作用域）</td><td>R3 凭证泄漏</td></tr>
+    <tr><td>N4</td><td>用表 owner 角色连 PG 直查 session_meta</td><td>RLS 配置检查用例：owner 绕过 = 部署错误，CI 用非 owner 角色断言 0 行</td><td>R7 RLS 绕过</td></tr>
+    <tr><td>N5</td><td>用户 patch 引用未准入插件 id</td><td>启动 fail-closed，错误信息含插件 id</td><td>R10 用户插件</td></tr>
+    <tr><td>N6</td><td>租户 lock 字段后用户层写入</td><td>写入被拒或静默忽略；describe() 返回 locked 标记</td><td>10.3 设置策略</td></tr>
+  </table>
+  <p><b>这些用例必须「先红后绿」进 CI</b>：开发顺序 = 先写负向用例（在未改造代码上确实失败），再实现防线让它变绿——防止「测试写了但没测到点上」。</p>
+  <h3>18.4 运行时不变量清单（ctx.invariants 伴生插件）</h3>
+  <table>
+    <tr><th>mu 包</th><th>注册的不变量</th></tr>
+    <tr><td>multiuser-context</td><td>请求作用域 dispose 后 currentUser 服务不可再解析（防句柄泄漏到下一请求）</td></tr>
+    <tr><td>storage-postgres</td><td>每条 SQL 会话变量 <code class="inline">app.user_id</code> 非空（漏 SET LOCAL 直接断言失败，不等越权发生）</td></tr>
+    <tr><td>用户桶包装层</td><td>所有 fs 写路径前缀 ∈ 当前用户可见集（18.2 例子的产品化）</td></tr>
+    <tr><td>host/auth</td><td>无认证请求 100% 被拒（网关计数器：auth_fail ≠ 0 时 anonymous_hit 必须为 0）</td></tr>
+    <tr><td>session-share</td><td>fork 出的会话 lineage 必须含种子会话 id（血缘不可伪造丢失）</td></tr>
+  </table>
+  <h3>18.5 可观察性三支柱</h3>
+  <table>
+    <tr><th>支柱</th><th>设计</th><th>复用/新建</th></tr>
+    <tr><td>日志（审计）</td><td>四元组 <code class="inline">tenantId,userId,sessionId,traceId</code>（已定）+ 结构化 JSON 落 PG <code class="inline">audit_log</code>，保留期按租户配额</td><td>新建（官方 telemetry 是匿名统计，不满足审计）</td></tr>
+    <tr><td>指标</td><td>每用户/租户：会话数、token 消耗、配额用量、越权拦截计数（N1–N6 命中数）；导出 Prometheus 格式</td><td>新建 mu-metrics 插件；<b>官方 telemetry 服务器模式直接关</b>（<code class="inline">DSH_TELEMETRY_DISABLED=1</code>，与官方 CI 同款开关）</td></tr>
+    <tr><td><b>追踪</b></td><td>traceId 由 apiproxy 生成（机器渠道调用也可由 AIMS 上游生成并经 <code class="inline">X-Dsh-Trace-Id</code> header 注入，<b>v2026-09-06 第二轮与 14.2 对齐</b>），随 isolate 传递，<code class="inline">SET LOCAL dsh.trace_id = '...'</code> 写入 PG 会话变量；一条慢查询能反查到用户+会话，跨系统排查 grep 同一 traceId</td><td>新建（贯穿线，无第三方 APM 依赖）</td></tr>
+  </table>
+  <div class="tip"><b>金丝雀与回退：</b>mu 模式本身是 feature flag（未登录 = local 兼容模式）。升级官方版本时先「关 mu 跑官方快照确认基线无回归」，再「开 mu 跑全套负向用例」——两次都是纯 CI 动作，不需要灰度基础设施。</div>
+</section>
+
+<section>
+  <h2>十九、树外开发与官方升级策略（2026-08-30 增补：零 fork 目标）</h2>
+  <p><b>回答核心问题：整体开发必须以插件（树外）方式开发，目标是零 fork。</b>fork 官方仓库 = 每次 release 都要 rebase 16 个包的改动、解冲突、重新验证——成本随官方迭代频率线性增长，不可持续。而 dsh 的架构哲学恰好站在我们这边（源码原文）：</p>
+  <div class="ok"><b>「There is no privileged core to patch: you extend dsh by mounting a plugin beside the others… including the model adapter, the tool registry, the session log, and the agent loop itself, so each is replaceable from configuration.」</b>——没有特权内核，一切可从配置替换。这是 Cordis 插件体系的官方承诺，多用户改造可以整体住在树外。已有先例：dsh-uai-brand 品牌插件（client.js + cordis.patch.yml，零改官方源码）已验证这条路。</div>
+  <h3>19.1 18 个改动点重分类：A 树外新插件 / B patch 配置替换 / C 上游依赖</h3>
+  <table>
+    <tr><th>类</th><th>含义</th><th>升级冲突面</th><th>改动点</th></tr>
+    <tr><td><b>A：树外新插件</b></td><td>独立仓库新建 Cordis 包，通过 patch insert 挂载</td><td><b>零代码冲突</b>。仅剩服务契约风险（上游改 ctx 接口 → 启动期 <code class="inline">Requires</code> 检查发现，比 git 冲突好解一个数量级）</td><td>#1 host/auth、#2 multiuser-context、#5 session-query 可见集包装、#9 memory 域、#10 session-share、#15 插件准入、<b>#17 host/lookup</b>（v2026-09-06 增）、审计/指标/追踪（18.5）</td></tr>
+    <tr><td><b>B：patch 替换配置</b></td><td>不改官方包代码，用 <code class="inline">cordis.patch.yml</code> <b>replace 行</b>换掉默认后端/参数（Cordis 注册是可逆 effect，卸载即还原）</td><td><b>零代码冲突</b>。冲突面收窄为：行 id 改名、config 字段名变更——loader-smoke 冒烟 3 分钟暴露</td><td>#3 attachment/spill 根目录（replace 行 + config 传用户桶路径）、#4 会话持久化（replace 成 mu 包装后端，包装官方 jsonl 后端 + 归属列）、#6 skill roots（replace 配置）、#7 workspace 注册表（replace 成 PG 后端实现同一契约）、#8 settings 文档路径（replace settings-file 行，config 指向用户桶）、#11 导出落盘、#16 describe 扩展（见 C 类说明）、#12 凭证（replace credentials 行）、<b>#18 storage-postgres DDL 增量</b>（v2026-09-06 增，<code class="inline">ALTER TABLE</code> 加 <code class="inline">biz_key</code> / <code class="inline">status</code> / <code class="inline">privacy</code> 列 + <code class="inline">UNIQUE</code> 索引，<code class="inline">migrations/0003_biz_key.sql</code>）</td></tr>
+    <tr><td><b>C：依赖上游</b></td><td>需要官方包新增接缝才能优雅实现</td><td>无法完全消除，用「包装 + 启动器」规避到最少</td><td><b>仅 2 项残留：</b>① settings 租户策略层（官方只有 3 层解析）→ 规避：mu-settings 插件在 L3 用户层之上再包一层（A 类包装，不改 settings 包）；② profile 挪用户桶（app-boot 是启动器）→ 规避：<b>自有 dsh-server 启动器</b>（我们自己的 CLI 包装，按登录用户动态生成 patch 序列调 <code class="inline">dsh --patch</code>，app-boot 一行不改）</td></tr>
+    <tr><td><b>D：CLI 工具</b></td><td>独立命令，与官方 CLI 并存</td><td>无冲突</td><td>#13/#14 dsh migrate multiuser、--to-postgres</td></tr>
+  </table>
+  <div class="ok"><b>结论：</b>18 项里 <b>0 项必须改官方包源码</b>（<b>v2026-09-06 增</b>：#17 host/lookup 是新插件、#18 是 PG 增量迁移，均落在树外仓库或 storage-postgres 包内）。原方案标注「修改」的项，全部重新表述为「replace 配置行 + 树外包装插件」——这正是本次增补对第十节清单的修订。</div>
+  <h3>19.2 仓库形态</h3>
+  <pre><code>dsh-multiuser/                  # 独立 git 仓库（零 fork）
+├── packages/
+│   ├── host-auth/               # A 类
+│   ├── multiuser-context/       # A 类
+│   ├── storage-postgres/        # A 类
+│   ├── session-share/           # A 类
+│   ├── memory-user/             # A 类（L3/L4）
+│   ├── mu-metrics/              # A 类（18.5 指标+追踪）
+│   └── mu-invariant/            # A 类（18.4 不变量）
+├── patches/
+│   ├── mu-server.patch.yml      # B 类：replace 行集合（服务器形态）
+│   └── mu-local.patch.yml       # B 类：本地 CLI 兼容形态（uid=local）
+├── bin/dsh-server               # C 类规避：启动器（登录→生成 patch→exec dsh）
+├── migrations/
+│   ├── 0001_init.sql            # D 类：原始 14.1 DDL（十张表）
+│   ├── 0002_rls.sql             # D 类：RLS 策略启用
+│   └── 0003_biz_key.sql         # D 类（v2026-09-06 增）：biz_key/status/privacy + UNIQUE 索引
+└── tests/
+    ├── negative/                # N1–N6 负向安全用例
+    └── snapshots/               # mu-on / mu-off 双 profile 快照</code></pre>
+  <h3>19.3 官方升级工作流（每次 release 的固定动作）</h3>
+  <table>
+    <tr><th>步骤</th><th>动作</th><th>失败的处置</th></tr>
+    <tr><td>1. 锁版本 bump</td><td>package.json 钉死官方 tag（禁止 <code class="inline">latest</code> 浮动）</td><td>—</td></tr>
+    <tr><td>2. 冒烟（3 分钟）</td><td>loader-smoke boot「官方 profile + mu-server.patch.yml」</td><td>挂 = 行 id/config 字段变更（B 类冲突）→ 比对官方 <code class="inline">--dump-config</code> diff，更新 patch，通常 10 分钟内</td></tr>
+    <tr><td>3. 契约检查</td><td>mu 包 inject 的官方服务接口类型编译 + <code class="inline">Requires</code> 声明校验</td><td>挂 = A 类契约变更 → 看官方 <code class="inline">.agents/notes/</code> 变更说明，包一层适配器；破坏性变更时评估锁老版本一版</td></tr>
+    <tr><td>4. 快照双跑</td><td>mu-off 对官方基线（字节级一致）+ mu-on 全量场景</td><td>off 挂 = 官方自身行为变化，与 mu 无关，记录基线更新；on 挂 = mu 回归，修复后才能升级</td></tr>
+    <tr><td>5. 负向安全</td><td>N1–N6 全绿</td><td>任何一条红 = 安全回归，<b>禁止上线</b>，最高优先级修复</td></tr>
+    <tr><td>6. 真实 API e2e</td><td>双用户并发 + 配额触发（带 Key）</td><td>人工分析</td></tr>
+  </table>
+  <p><b>升级成本模型：</b>fork 方案的冲突面 = 16 包 × 每处改动的代码行（随官方重构放大）；树外方案的冲突面 = <b>固定三类信号</b>（patch 行失效 / 服务契约变更 / 快照基线漂移），且全部在 CI 里有独立红灯，定位精确。日常升级大概率只走到第 2 步就绿了。</p>
+  <h3>19.4 与上游的双向关系（长期成本递减）</h3>
+  <table>
+    <tr><th>动作</th><th>说明</th></tr>
+    <tr><td>订阅变更</td><td>官方 <code class="inline">.agents/notes/</code> 目录是结构化变更日志（架构/特性/修复分类），每次升级先读 notes 再看 diff——官方自己维护的升级指南</td></tr>
+    <tr><td>向上游提 PR</td><td>B/C 类里通用性强的接缝（storage-postgres 后端、settings 策略层、per-user home）按官方贡献规范提 PR：<b>合入一次，永久受益，冲突面进一步归零</b>。多用户是社区普遍诉求，接受度可期</td></tr>
+    <tr><td>私有接缝不上游</td><td>医院特有部分（4A 对接、科室租户模型）留在树外仓库——避免为合并而泄漏业务设计</td></tr>
+  </table>
+  <div class="warn"><b>新增风险 R11（官方破坏性升级）：</b>概率中、影响中——上游大版本重构服务契约（如 agent-loop 换血）时，A 类插件需要集中适配。对策：升级工作流第 3 步的契约检查前置暴露 + 允许锁老版本一版缓冲 + 关键接缝持续向上游 PR 化解。等级：<span class="lvl" style="background:#f0a02e"></span><b>中</b>（有明确信号、有缓冲手段、不阻塞业务；见 19.3 升级工作流）。</div>
+</section>
+
+<footer>DeepSeek Harness 多用户（租户）改造方案 · 2026-08-30 · 基于 deepseek-harness 源码逐包核实（skill / session-query / attachment / spill / storage-domain / compaction / workspace / extensions / settings / app-boot profile 机制 / test-support 测试基建 / ctx.invariants）+ 业界对标（Dify / Coze / Manus-E2B / LangGraph / WorkBuddy，2026-08-30 检索）+ 服务端 PostgreSQL 定稿 + 架构视图集（总体架构 / 分模块 / 调用链路 / 功能列表 / 风险矩阵）+ 插件与设置分级设计（三级安装 / 四级解析）+ 可测试性可观察性（十八）+ 树外零 fork 开发与升级策略（十九）+ 数据库关系图（14.1 ER 图与外键清单）· 2026-09-06 第一轮回灌：biz_key 列 + UNIQUE(tenant_id,biz_key)、workspace.status/privacy、#17 host/lookup、#18 DDL 增量、R12、28 项功能· 2026-09-06 第二轮回灌：#17 ensure 族扩 4 类（增 tenant）、14.2 /mu/v1 API 契约汇总 9 端点（含 :archive 操作型端点）、audit_log DDL 补全（机器渠道 actor 语义 + trace_id 必填）、traceId 透传契约固化（与 AIMS 第十节威胁面分析对齐）· 配套镜像文档：AIMS-DSH 多租户对接方案（v2026-09-06，定稿前评审稿）
+· v2026-09-06 增：对接 AIMS 多租户场景——app_user/workspace/session_meta 加 biz_key 列（UNIQUE 索引）+ workspace.status/privacy + session_meta.status；新增改动点 #17 host/lookup（宿主业务键反查族）+ #18 storage-postgres DDL 增量（migrations/0003_biz_key.sql）；16.1 功能列表新增 2 项（共 28 项）；风险 R12 命名冲突（低中）；零 fork 结论扩展至 18 项</footer>
+
+</div>
+
+<nav class="toc" id="toc">
+  <div class="toc-title">目 录</div>
+</nav>
+
+<script>
+(function () {
+  var toc = document.getElementById('toc');
+  var wrap = document.querySelector('.wrap');
+  var headings = wrap.querySelectorAll('h2, h3');
+  var links = [];
+  var i = 0;
+
+  headings.forEach(function (h, idx) {
+    if (!h.id) h.id = 'sec-' + idx;
+    // 目录精简：去掉括号注释（含日期/增补说明），冒号后的副标题截断
+    var label = h.textContent
+      .replace(/（[^）]*）/g, '')
+      .replace(/：[^:：]*$/, '')
+      .replace(/——.*$/, '')
+      .trim();
+    var a = document.createElement('a');
+    a.href = '#' + h.id;
+    a.textContent = label;
+    a.title = h.textContent;   // 悬停显示完整标题
+    a.className = (h.tagName === 'H2') ? 'lvl1' : 'lvl2';
+    toc.appendChild(a);
+    links.push({ el: a, target: h });
+  });
+
+  // 滚动高亮：取当前视口顶部最近的标题
+  function spy() {
+    var pos = window.scrollY + 120, current = -1;
+    for (var j = 0; j < headings.length; j++) {
+      if (headings[j].offsetTop <= pos) current = j;
+    }
+    links.forEach(function (l, j) {
+      l.el.classList.toggle('active', j === current);
+    });
+    // 当前项保持可见
+    var act = toc.querySelector('a.active');
+    if (act) {
+      var top = act.offsetTop - toc.offsetTop, bottom = top + act.offsetHeight;
+      if (top < toc.scrollTop + 20 || bottom > toc.scrollTop + toc.clientHeight - 20) {
+        toc.scrollTop = top - toc.clientHeight / 2;
+      }
+    }
+  }
+  window.addEventListener('scroll', spy, { passive: true });
+  window.addEventListener('resize', spy);
+  spy();
+})();
+</script>
+</body>
+</html>

@@ -15,6 +15,7 @@ import {
   validateBizKey,
 } from '../src/biz-key.ts'
 import { LookupError } from '../src/error.ts'
+import type { EnsureRequest, LookupRecord } from '../src/types.ts'
 
 describe('biz-key prefix table', () => {
   test('user maps to aims', () => {
@@ -114,5 +115,38 @@ describe('extractBizKeyPrefix', () => {
     assert.throws(() => extractBizKeyPrefix('nodot'), LookupError)
     assert.throws(() => extractBizKeyPrefix('aims.'), LookupError)
     assert.throws(() => extractBizKeyPrefix('unknown.foo'), LookupError)
+  })
+})
+
+describe('EnsureRequest + LookupRecord — attrs shape (0004 migration)', () => {
+  test('EnsureRequest accepts an optional attrs object', () => {
+    const req: EnsureRequest<'workspace'> = {
+      tenantId: '00000000-0000-0000-0000-000000000001' as never,
+      bizKey: 'patient.ABC123' as never,
+      type: 'workspace',
+      attrs: { privacy: 'private', display_name: 'Test' },
+    }
+    assert.equal(req.attrs?.['privacy'], 'private')
+  })
+
+  test('EnsureRequest without attrs is valid (server defaults to {} for INSERT)', () => {
+    const req: EnsureRequest<'user'> = {
+      tenantId: '00000000-0000-0000-0000-000000000001' as never,
+      bizKey: 'aims.D2024001' as never,
+      type: 'user',
+    }
+    assert.equal(req.attrs, undefined)
+  })
+
+  test('LookupRecord carries attrs as Readonly<Record<string, unknown>>', () => {
+    const record: LookupRecord<'workspace'> = {
+      tenantId: '00000000-0000-0000-0000-000000000001' as never,
+      bizKey: 'patient.ABC123' as never,
+      id: '00000000-0000-0000-0000-000000000002' as never,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      attrs: { privacy: 'private' },
+    }
+    assert.equal(record.attrs['privacy'], 'private')
   })
 })

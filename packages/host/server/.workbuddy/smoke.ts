@@ -249,6 +249,7 @@ const fakeLookup = (lookupImpl: (type: string, bizKey: string) => Promise<unknow
         tenantId: '00000000-0000-0000-0000-000000000001',
         createdAt: new Date('2026-09-06T00:00:00Z'),
         updatedAt: new Date('2026-09-06T00:00:00Z'),
+        attrs: { role: 'admin' },
       },
     })) as never,
   })
@@ -265,7 +266,9 @@ const fakeLookup = (lookupImpl: (type: string, bizKey: string) => Promise<unknow
   assert.equal(captured.status, 200)
   assert.match(captured.body, /"hit":/)
   assert.match(captured.body, /"id":"u-123"/)
-  ok('lookup hit: 200 + body contains hit envelope')
+  assert.match(captured.body, /"attrs":/)
+  assert.match(captured.body, /"role":"admin"/)
+  ok('lookup hit: 200 + body contains hit envelope + attrs')
 }
 {
   const handler = makeLookupHandler({
@@ -357,6 +360,7 @@ console.log('\n[6] handlers/ensure')
         tenantId: '00000000-0000-0000-0000-000000000001',
         createdAt: new Date('2026-09-06T00:00:00Z'),
         updatedAt: new Date('2026-09-06T00:00:00Z'),
+        attrs: { privacy: 'private', display_name: 'Test' },
       }),
     } as never,
   })
@@ -371,13 +375,16 @@ console.log('\n[6] handlers/ensure')
     body: JSON.stringify({
       bizKey: 'patient.ABC123',
       tenantId: '00000000-0000-0000-0000-000000000001',
+      attrs: { privacy: 'private', display_name: 'Test' },
     }),
   })
   const { res, captured } = captureResponse()
   await handler(req, res)
   assert.equal(captured.status, 200)
   assert.match(captured.body, /"id":"ws-9"/)
-  ok('ensure happy path: 200 + body contains upserted row')
+  assert.match(captured.body, /"attrs":/)
+  assert.match(captured.body, /"privacy":"private"/)
+  ok('ensure happy path: 200 + body contains upserted row + attrs')
 }
 {
   const handler = makeEnsureHandler('user', {

@@ -126,6 +126,7 @@ export function makeEnsureHandler(type: LookupType, deps: {
         id: record.id,
         bizKey: record.bizKey,
         tenantId: record.tenantId,
+        attrs: record.attrs,
         createdAt: record.createdAt.toISOString(),
         updatedAt: record.updatedAt.toISOString(),
       })

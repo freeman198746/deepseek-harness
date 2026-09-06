@@ -87,6 +87,7 @@ export function makeLookupHandler(deps: {
           id: outcome.record.id,
           bizKey: outcome.record.bizKey,
           tenantId: outcome.record.tenantId,
+          attrs: outcome.record.attrs,
           createdAt: outcome.record.createdAt.toISOString(),
           updatedAt: outcome.record.updatedAt.toISOString(),
         },

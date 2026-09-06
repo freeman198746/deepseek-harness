@@ -50,12 +50,29 @@ interface RawRow {
   id: string
   created_at: Date
   updated_at: Date
+  attrs: Record<string, unknown>
 }
 
 /** Configuration for {@link LookupService}. */
 export interface LookupServiceOptions {
   /** The mounted {@link PgStoreService} — owns the pool + migrations. */
   readonly pgstore: PgStoreService
+}
+
+/**
+ * Coerce an unknown attrs value coming from the JSONB column into a plain
+ * object. PG returns JSONB as a parsed JS value; we still defensively
+ * validate because the column has been empty / non-object in some legacy
+ * schemas.
+ *
+ * @param value - The value read from PG.
+ * @returns A plain object (empty object when the value is missing / not object-shaped).
+ */
+function normalizeAttrs(value: unknown): Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return {}
+  }
+  return value as Record<string, unknown>
 }
 
 /**
@@ -94,7 +111,7 @@ export class LookupService {
     const table = TABLE_BY_TYPE[type]
     const result = await this.options.pgstore.client.withTenant(ctx, async (client) => {
       return client.query<RawRow>(
-        `SELECT ${table.idColumn} AS id, created_at, updated_at
+        `SELECT ${table.idColumn} AS id, created_at, updated_at, attrs
            FROM ${table.table}
           WHERE tenant_id = $1 AND biz_key = $2`,
         [ctx.tenantId, validated],
@@ -104,7 +121,11 @@ export class LookupService {
     if (!row) return { kind: 'miss' }
     return {
       kind: 'hit',
-      record: this.shapeRecord<T>(ctx.tenantId, validated, { ...row, kind: type }),
+      record: this.shapeRecord<T>(ctx.tenantId, validated, {
+        ...row,
+        attrs: normalizeAttrs(row.attrs),
+        kind: type,
+      }),
     }
   }
 
@@ -130,19 +151,21 @@ export class LookupService {
     const validated = validateBizKey(request.bizKey, request.type)
     const table = TABLE_BY_TYPE[request.type]
     const result = await this.options.pgstore.client.withTenant(ctx, async (client) => {
-      // Step 1: insert-or-noop. ON CONFLICT DO NOTHING keeps the row
-      // untouched when it already exists — ensure is idempotent.
+      // Step 1: insert-or-noop. attrs is only written when the row does NOT
+      // yet exist (ON CONFLICT DO NOTHING keeps the existing row untouched
+      // — the contract is "ensure is idempotent and never overwrites
+      // host-owned columns once the row exists").
       await client.query(
-        `INSERT INTO ${table.table} (tenant_id, biz_key)
-         VALUES ($1, $2)
+        `INSERT INTO ${table.table} (tenant_id, biz_key, attrs)
+         VALUES ($1, $2, $3::jsonb)
          ON CONFLICT (tenant_id, biz_key) DO NOTHING`,
-        [request.tenantId, validated],
+        [request.tenantId, validated, JSON.stringify(request.attrs ?? {})],
       )
       // Step 2: read back the row that now exists. This second SELECT is
       // intentional: a one-statement CTE is faster in isolation but harder
       // to keep correct as attrs columns land.
       return client.query<RawRow>(
-        `SELECT ${table.idColumn} AS id, created_at, updated_at
+        `SELECT ${table.idColumn} AS id, created_at, updated_at, attrs
            FROM ${table.table}
           WHERE tenant_id = $1 AND biz_key = $2`,
         [request.tenantId, validated],
@@ -157,7 +180,11 @@ export class LookupService {
         `ensure for (${request.type}, "${validated}") returned no row after insert-or-noop`,
       )
     }
-    return this.shapeRecord<T>(request.tenantId, validated, { ...row, kind: request.type })
+    return this.shapeRecord<T>(request.tenantId, validated, {
+      ...row,
+      attrs: normalizeAttrs(row.attrs),
+      kind: request.type,
+    })
   }
 
   /**
@@ -197,6 +224,7 @@ export class LookupService {
       id: row.id as UserId,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      attrs: normalizeAttrs(row.attrs),
     }
   }
 
@@ -212,6 +240,7 @@ export class LookupService {
       id: row.id as WorkspaceId,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      attrs: normalizeAttrs(row.attrs),
     }
   }
 
@@ -227,6 +256,7 @@ export class LookupService {
       id: row.id as SessionId,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      attrs: normalizeAttrs(row.attrs),
     }
   }
 }

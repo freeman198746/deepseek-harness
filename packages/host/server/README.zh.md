@@ -95,13 +95,15 @@ kind: "package-reference"
 | 方法   | 路径                              | 鉴权                                                          | 请求体 / 查询                                                                                    | 响应                                                                                       |
 |--------|-----------------------------------|---------------------------------------------------------------|---------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------|
 | `GET`  | `/mu/v1/health`                   | 无（公开）                                                    | —                                                                                                 | `{ ok: true, status, service: 'dsh-host-server', pgstore: 'reachable' }`                   |
-| `GET`  | `/mu/v1/lookup`                   | `Authorization: Bearer <apiKey>` + `X-Dsh-Tenant`              | `?type={user\|workspace\|session}&biz_key=…&tenant_key=…`                                         | `{ ok: true, hit: { … } }` 或 `{ ok: true, miss: true }`                                   |
-| `POST` | `/mu/v1/ensure/user`              | `Authorization: Bearer <apiKey>` + `X-Dsh-Tenant`              | `{ bizKey: 'aims.<userCode>', tenantId, attrs? }`                                                 | `{ ok: true, id, bizKey, tenantId, createdAt, updatedAt }`                                 |
+| `GET`  | `/mu/v1/lookup`                   | `Authorization: Bearer <apiKey>` + `X-Dsh-Tenant`              | `?type={user\|workspace\|session}&biz_key=…&tenant_key=…`                                         | `{ ok: true, hit: { type, id, bizKey, tenantId, attrs, createdAt, updatedAt } }` 或 `{ ok: true, miss: true }` |
+| `POST` | `/mu/v1/ensure/user`              | `Authorization: Bearer <apiKey>` + `X-Dsh-Tenant`              | `{ bizKey: 'aims.<userCode>', tenantId, attrs? }`                                                 | `{ ok: true, id, bizKey, tenantId, attrs, createdAt, updatedAt }`                          |
 | `POST` | `/mu/v1/ensure/workspace`         | `Authorization: Bearer <apiKey>` + `X-Dsh-Tenant`              | `{ bizKey: 'patient.<cureno>', tenantId, attrs? }`                                                | 同上                                                                                       |
 | `POST` | `/mu/v1/ensure/session`           | `Authorization: Bearer <apiKey>` + `X-Dsh-Tenant`              | `{ bizKey: 'visit.<visitId>', tenantId, attrs? }`                                                 | 同上                                                                                       |
 | `POST` | `/mu/v1/auth/token:issue`         | `Authorization: Bearer <apiKey>`                              | `{ subject, scopes?, audience?, ttlSeconds? }`                                                   | `{ ok: true, token, jti, expiresAt, audience }`                                            |
 
 `ensure` 请求中的 `tenantId` 必须与 `X-Dsh-Tenant` 一致，不一致返回 `400 bad-request`。调用方应始终设置该请求头；body 里的字段仅与 lookup 的查询字符串对称。
+
+`attrs` 是 storage-postgres 迁移 `0004_ensure_attributes.sql` 落地的自由 JSONB 列。宿主可在 insert 时传任意 plain object；ensure 是幂等的——对已存在行传 `attrs` 是 no-op（返回的行内 `attrs` 是原值，原地不动）。
 
 <a id="configuration"></a>
 

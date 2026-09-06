@@ -69,6 +69,12 @@ export interface LookupRecord<T extends LookupType> {
    * `updated_at NOT NULL DEFAULT now()` and a trigger refreshes it on UPDATE.
    */
   readonly updatedAt: Date
+  /**
+   * Free-form host-side attributes. Populated from the `attrs` JSONB column
+   * landed by migration `0004_ensure_attributes.sql`. Empty object when the
+   * column carries `{}` (the default).
+   */
+  readonly attrs: Readonly<Record<string, unknown>>
 }
 
 /**

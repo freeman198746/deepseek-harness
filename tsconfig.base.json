@@ -366,6 +366,7 @@
       "@deepseek-ai/dsh-storage-domain": ["./packages/storage/storage-domain/src"],
       "@deepseek-ai/dsh-storage-domain/invariant": ["./packages/storage/storage-domain/src/invariant.ts"],
       "@deepseek-ai/dsh-storage-json": ["./packages/storage/storage-json/src"],
+      "@deepseek-ai/dsh-storage-postgres": ["./packages/storage/storage-postgres/src"],
       "@deepseek-ai/dsh-storage-sqlite": ["./packages/storage/storage-sqlite/src"],
       "@deepseek-ai/dsh-subagent": ["./packages/subagent/subagent/src"],
       "@deepseek-ai/dsh-subagent/invariant": ["./packages/subagent/subagent/src/invariant.ts"],

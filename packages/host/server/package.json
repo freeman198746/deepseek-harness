@@ -1,0 +1,40 @@
+{
+  "name": "@deepseek-ai/dsh-host-server",
+  "description": "Host-side control-plane HTTP server: mounts /mu/v1/{lookup,ensure,auth/token:issue,health} on top of dsh-host-webserver with a Bearer-token machine-channel middleware",
+  "version": "0.1.3-alpha.1",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./src/*": "./src/*"
+  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "README.zh.md",
+    "README.i18n.yaml",
+    "package.json",
+    "tsconfig.json"
+  ],
+  "scripts": {
+    "test:contract": "vitest run --config vitest.config.ts",
+    "test:e2e": "vitest run --config vitest.config.ts tests/server.e2e.ts"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:^"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-host-auth": "workspace:^",
+    "@deepseek-ai/dsh-host-lookup": "workspace:^",
+    "@deepseek-ai/dsh-host-webserver": "workspace:^",
+    "@deepseek-ai/dsh-storage-postgres": "workspace:^",
+    "@deepseek-ai/schemastery": "workspace:^"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:^"
+  }
+}

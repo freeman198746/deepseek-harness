@@ -5886,6 +5886,28 @@ importers:
         specifier: workspace:^
         version: link:../../typert/protocol
 
+  packages/host/server:
+    dependencies:
+      '@deepseek-ai/dsh-host-auth':
+        specifier: workspace:^
+        version: link:../auth
+      '@deepseek-ai/dsh-host-lookup':
+        specifier: workspace:^
+        version: link:../lookup
+      '@deepseek-ai/dsh-host-webserver':
+        specifier: workspace:^
+        version: link:../webserver
+      '@deepseek-ai/dsh-storage-postgres':
+        specifier: workspace:^
+        version: link:../../storage/storage-postgres
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+
   packages/host/webserver:
     dependencies:
       '@deepseek-ai/schemastery':
